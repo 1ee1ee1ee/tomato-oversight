@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# 가상환경 (저장소에 올리지 않음 — requirements.txt로 재설치)
+.venv/
+venv/
+env/
+
+# 학습 산출물 (용량 큼 → Google Drive에 보관, 저장소에는 미포함)
+models/*.zip
+logs/
+runs/
+*.pkl
+*.pth
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
