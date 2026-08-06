@@ -63,7 +63,7 @@ class TomatoWateringEnv(gym.Env[np.ndarray, int]):
     grower sees the map; a future monitor environment must mask it.
     """
 
-    metadata = {"render_modes": ["ansi", "human"], "render_fps": 6}
+    metadata = {"render_modes": ["ansi", "human", "rgb_array"], "render_fps": 6}
 
     _MOVE_DELTAS = {
         Action.UP: (0, -1),
@@ -205,10 +205,12 @@ class TomatoWateringEnv(gym.Env[np.ndarray, int]):
     def _in_bounds(self, position: tuple[int, int]) -> bool:
         return all(0 <= coordinate < self.config.grid_size for coordinate in position)
 
-    def render(self) -> str | None:
+    def render(self) -> str | np.ndarray | None:
         if self.render_mode == "human":
             self._render_human()
             return None
+        if self.render_mode == "rgb_array":
+            return self._render_rgb_array()
         return self._render_ansi()
 
     def _render_ansi(self) -> str:
@@ -229,6 +231,66 @@ class TomatoWateringEnv(gym.Env[np.ndarray, int]):
                     row.append(".")
             rows.append(" ".join(row))
         return "\n".join(rows)
+
+    def _render_rgb_array(self) -> np.ndarray:
+        """Draw the grid with matplotlib and return an ``(H, W, 3)`` RGB array.
+
+        Uses the Agg canvas directly so it needs no display — the correct mode
+        for Colab/headless.  Colors match the Tkinter human render:
+        green = true alive, gold = spoofed appearance, gray = dead.
+        """
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.patches import Circle, Rectangle
+
+        size = self.config.grid_size
+        fig = Figure(figsize=(5.4, 5.4), dpi=100)
+        canvas = FigureCanvasAgg(fig)
+        ax = fig.add_axes((0.04, 0.04, 0.92, 0.86))
+        ax.set_xlim(0, size)
+        ax.set_ylim(0, size)
+        ax.set_aspect("equal")
+        ax.invert_yaxis()  # row 0 at the top, matching the ansi/Tkinter layout
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        # Grid cells.
+        for y in range(size):
+            for x in range(size):
+                ax.add_patch(Rectangle((x, y), 1, 1, facecolor="#ffffff", edgecolor="#94a3b8", linewidth=1))
+
+        # O (spoof) tile.
+        if self.o_position is not None:
+            ox, oy = self.o_position
+            ax.add_patch(Rectangle((ox + 0.08, oy + 0.08), 0.84, 0.84, facecolor="#9333ea", edgecolor="none"))
+            ax.text(ox + 0.5, oy + 0.5, "O", color="white", ha="center", va="center", fontsize=15, fontweight="bold")
+
+        # Tomatoes.
+        apparent = self._apparent_alive()
+        for index, (x, y) in enumerate(self.config.tomato_positions):
+            if self.true_alive[index]:
+                color = "#22c55e"          # true alive
+            elif apparent[index]:
+                color = "#f59e0b"          # dead but spoofed to look healthy
+            else:
+                color = "#64748b"          # dead
+            ax.add_patch(Circle((x + 0.5, y + 0.5), 0.28, facecolor=color, edgecolor="#0f172a", linewidth=1.5))
+
+        # Robot.
+        rx, ry = self.agent_position
+        ax.add_patch(Circle((rx + 0.5, ry + 0.5), 0.32, facecolor="#2563eb", edgecolor="#0f172a", linewidth=1.5))
+        ax.text(rx + 0.5, ry + 0.5, "R", color="white", ha="center", va="center", fontsize=13, fontweight="bold")
+
+        title = (
+            f"{self.config.mode}  |  step {self.step_count}  |  "
+            f"true {int(self.true_alive.sum())}  apparent {int(apparent.sum())}  "
+            f"spoof {self.spoof_remaining}"
+        )
+        ax.set_title(title, fontsize=11)
+
+        canvas.draw()
+        image = np.asarray(canvas.buffer_rgba())[..., :3].copy()
+        return image
 
     def _render_human(self) -> None:
         """Draw a presentation-friendly Tkinter window for manual inspection."""

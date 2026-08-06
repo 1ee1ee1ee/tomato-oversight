@@ -41,7 +41,10 @@ tomato-oversight/
 
 ### A) Google Colab (팀 협업 · 권장)
 
-노트북 첫 셀에 붙여넣고 실행:
+가장 빠른 방법: [`notebooks/00_colab_bootstrap.ipynb`](notebooks/00_colab_bootstrap.ipynb)를 Colab에서 열고 **`런타임 > 모두 실행`**.
+환경 세팅·시각화·무작위 정책 애니메이션까지 자동으로 확인됩니다.
+
+직접 셀을 만들려면 첫 셀에 붙여넣고 실행:
 
 ```python
 !pip install -q stable-baselines3 gymnasium
@@ -63,7 +66,7 @@ model.save('/content/drive/MyDrive/tomato-oversight/models/honest_dqn')
 ```
 
 > ⚠️ **Colab 주의점**
-> - `render_mode="human"`(Tkinter 창)은 Colab에서 **작동 안 함** → `env.render()`의 텍스트 출력을 사용.
+> - `render_mode="human"`(Tkinter 창)은 Colab에서 **작동 안 함** → 격자 이미지는 `render_mode="rgb_array"`로 만들고 `plt.imshow(env.render())`로 표시 (부트스트랩 노트북 3~4장 참고). 텍스트만 필요하면 기본 `env.render()`의 ansi 출력 사용.
 > - 무료 세션은 유휴 ~90분/최대 ~12시간에 끊김 → 학습 중간에 Drive로 체크포인트 저장.
 > - 5×5 격자 DQN은 작아서 **GPU 불필요, CPU 런타임으로 충분**.
 
@@ -91,6 +94,7 @@ python scripts/01_validate_env.py --mode E1 --render --seed 42
 
 - [x] 재배 로봇 환경 `TomatoWateringEnv` (E0/E1)
 - [x] 환경 검증 스크립트
+- [x] Colab 부트스트랩 노트북 + matplotlib 렌더러 (`rgb_array`)
 - [ ] 재배 로봇 DQN 학습 (정직 / 치터)
 - [ ] 감시자 환경 (체제 1 / 체제 2)
 - [ ] 감시자 DQN 학습 및 체제 비교 실험
