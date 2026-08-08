@@ -1,10 +1,14 @@
-# honest_v9
+# honest_v10_mo
 
 이 패키지는 합의한 최종 규칙 중 **정직 재배 로봇**만 학습한다.
 
-**v7과의 관계**: 환경 규칙(`src/env.py`)은 v7과 완전히 동일하다. v7의 1M step
-학습(run1)이 50k step 최고점 이후 붕괴한 문제를 고치기 위해 **학습 안정화만**
-수정한 버전이다(아래 "학습 안정화 수정" 참고). v7 체크포인트와 호환되지 않는다.
+**버전 계보**: 환경 규칙(`src/env.py`)은 v7·v9와 완전히 동일하다.
+- v7 → **v9**: 학습 붕괴(run1) 안정화 — 보상 스케일링·replay 1M·soft target·10-step.
+- v9 → **v10_mo (현재 권장)**: O(1,1) 고정·평가 경량화·dueling Q헤드·
+  배포 정책을 ε-greedy(0.10)로 정의하고 평가도 동일 ε로 측정.
+  로컬 350k 검증에서 최초로 full_survival_rate 0.5 달성.
+
+v7·v9 체크포인트와 호환되지 않는다 (dueling 구조 변경).
 
 ## 반영된 규칙
 
@@ -49,6 +53,29 @@ run1(1M step)은 50k step에서 최고 성능(생존율 0.75)을 찍은 뒤 학�
 Q값 스케일이 달라서(스케일 도입 전 학습) 이어받으면 오히려 망가진다.
 새로 학습해야 한다.
 
+## 2차 수정: O 고정 · 평가 경량화 · 배포 정책 정의 (v9 1M run 대응)
+
+v9 1M run은 붕괴 없이 학습됐지만 `full_survival_rate`가 0이었다.
+
+1. **원인 — greedy 평가만 무너짐**: ε=0.10 행동 정책은 5/5 생존을 자주
+   찍는데, ε=0 순수 greedy는 한두 토마토에 주저앉아 물만 주는 루프
+   (물주기 3천~7천회)에 빠졌다. 로컬 350k 검증 두 번의 결론:
+   - ε을 0.02까지 어닐링 → greedy가 1↔0으로 요동, 행동 정책까지 붕괴.
+   - Dueling 구조(도입 유지됨) 추가 → 단독으로는 이 스케일에서 부족.
+
+   **최종 해결 — 배포 정책을 "Q-greedy + ε=0.10 (마스킹된 랜덤)"으로
+   정의한다.** 재배 로봇은 감시자 연구의 고정된 상대일 뿐이므로 결정론일
+   필요가 없고, 고정 + 충분히 유능하면 된다. 잘 작동하는 학습 분포를
+   그대로 배포하고, **평가·best 선정도 같은 ε로 측정**한다
+   (`--eval-epsilon 0.10`, `--eval-episodes 3`). 순수 greedy 결정론
+   정책은 미해결 확장 과제로 남긴다(더 긴 학습·PPO 비교 등).
+2. **시간의 주범은 평가였음**: 평가 1회 = O 4곳 × 10,000 step = 40,000
+   step, ×20회 = 학습(1M)의 80%. → **`--o-position 1,1` 기본값**으로
+   학습·평가 모두 O를 (1,1)에 고정, 평가는 그 위치만 3 에피소드.
+   네 위치 순환(일반화 실험)으로 되돌리려면 `--o-position cycle`.
+3. 기타: dueling Q 헤드(작은 행동 간 차이 해상도 개선), `--n-steps 20`.
+   ⚠️ 구조 변경으로 **이전 v9 체크포인트와 호환되지 않는다.**
+
 ## Colab에서 실행 (GitHub 저장소 기반)
 
 zip 업로드 없이 저장소에서 바로 최신 코드를 받아 실행한다.
@@ -70,7 +97,7 @@ os.chdir('/content')
 if not os.path.isdir('tomato-oversight'):
     !git clone https://github.com/1ee1ee1ee/tomato-oversight.git
 !cd /content/tomato-oversight && git pull
-%cd /content/tomato-oversight/honest_v9
+%cd /content/tomato-oversight/honest_v10_mo
 !pip install -q -r requirements.txt
 ```
 
@@ -99,7 +126,7 @@ print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_
 !python train.py \
   --total-steps 1000000 \
   --device auto \
-  --output-dir "/content/drive/MyDrive/result_honest_v9"
+  --output-dir "/content/drive/MyDrive/result_honest_v10_mo"
 ```
 
 기본값은 1,000,000 environment step, 10-step Double DQN이다. 공식 보상은
@@ -118,8 +145,8 @@ terminal Phi = 0
 
 학습 중 50,000 step마다 다음 파일이 Drive에 갱신된다.
 
-- `honest_v9_last.pt`: 최근 모델
-- `honest_v9_best.pt`: 네 O 위치 평가에서 가장 좋은 모델
+- `honest_v10_mo_last.pt`: 최근 모델
+- `honest_v10_mo_best.pt`: 네 O 위치 평가에서 가장 좋은 모델
 - `training_episodes.csv`
 - `periodic_evaluation.csv`
 - `best_evaluation.csv`
@@ -131,15 +158,15 @@ terminal Phi = 0
 ```bash
 !python train.py \
   --total-steps 500000 \
-  --resume-model "/content/drive/MyDrive/result_honest_v9/honest_v9_last.pt" \
-  --output-dir "/content/drive/MyDrive/result_honest_v9"
+  --resume-model "/content/drive/MyDrive/result_honest_v10_mo/honest_v10_mo_last.pt" \
+  --output-dir "/content/drive/MyDrive/result_honest_v10_mo"
 ```
 
 ### 6. 최종 평가
 
 ```bash
 !python evaluate.py \
-  --model "/content/drive/MyDrive/result_honest_v9/honest_v9_best.pt" \
+  --model "/content/drive/MyDrive/result_honest_v10_mo/honest_v10_mo_best.pt" \
   --episodes-per-o 3 \
   --device auto
 ```
@@ -149,7 +176,7 @@ terminal Phi = 0
 ## 파일 구조
 
 ```text
-honest_v9/
+honest_v10_mo/
 ├── train.py
 ├── evaluate.py
 ├── requirements.txt

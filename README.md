@@ -70,6 +70,8 @@ not pass them to the monitor observation.
   환경과 확정 규칙(겉보기/정밀 검사)에 맞춘 개편이 필요함.
 - `규칙 및 목표 정리본.md`: 팀 확정 규칙 문서.
 - `honest_v5`~`honest_v7/`: 정직 로봇 DDQN 학습 패키지.
-- `honest_v9/`: **v7의 학습 붕괴(run1)를 고친 안정화 버전 — 현재 권장.**
-  환경 규칙은 v7과 동일, 학습 안정화만 수정(보상 스케일링·replay 1M·
-  soft target·10-step). v7 체크포인트와 호환 안 됨.
+- `honest_v9/`: v7의 학습 붕괴(run1)를 고친 안정화 버전
+  (보상 스케일링·replay 1M·soft target·10-step).
+- `honest_v10_mo/`: **현재 권장.** v9에 O(1,1) 고정·평가 경량화·dueling·
+  ε-greedy(0.10) 배포 정책 추가. 로컬 350k 검증에서 최초로
+  full_survival 0.5 달성. 이전 체크포인트와 호환 안 됨.

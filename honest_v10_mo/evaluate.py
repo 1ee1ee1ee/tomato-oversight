@@ -20,13 +20,24 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=20_000)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--show-first-grid", action="store_true")
+    # Match train.py: "1,1" evaluates the single fixed O, "cycle" all four.
+    parser.add_argument("--o-position", type=str, default="1,1")
+    # Deployment policy is epsilon-greedy (see train.py --eval-epsilon).
+    parser.add_argument("--epsilon", type=float, default=0.10)
     args = parser.parse_args()
 
     agent, metadata = DoubleDQNAgent.load(args.model, args.device, args.seed)
     config = HonestGrowerConfig()
+    if args.o_position == "cycle":
+        eval_positions = list(config.o_candidates)
+    else:
+        fixed_o = tuple(int(value) for value in args.o_position.split(","))
+        if fixed_o not in config.o_candidates:
+            raise ValueError(f"--o-position must be 'cycle' or one of {config.o_candidates}")
+        eval_positions = [fixed_o]
     rows = []
     episode = 0
-    for o_position in config.o_candidates:
+    for o_position in eval_positions:
         for repeat in range(args.episodes_per_o):
             env = HonestTomatoEnv(config)
             observation, _ = env.reset(
@@ -39,7 +50,7 @@ def main() -> None:
             while not (terminated or truncated):
                 action = agent.select_action(
                     observation,
-                    epsilon=0.0,
+                    epsilon=args.epsilon,
                     action_mask=env.valid_action_mask,
                 )
                 counts[Action(action).name] += 1

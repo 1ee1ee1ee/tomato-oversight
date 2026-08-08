@@ -41,6 +41,20 @@ class TargetUpdateTests(unittest.TestCase):
         )
         self.assertFalse(identical, "soft update must not fully copy in one step")
 
+    def test_dueling_output_shape_and_identifiability(self):
+        from src.ddqn import QNetwork
+
+        network = QNetwork(4, 3, (16,))
+        observations = torch.randn(5, 4)
+        q_values = network(observations)
+        self.assertEqual(q_values.shape, (5, 3))
+        # The mean-advantage subtraction keeps the decomposition identifiable:
+        # Q minus V must average to zero over actions.
+        features = network.trunk(observations)
+        value = network.value_head(features)
+        centered = (q_values - value).mean(dim=-1)
+        self.assertTrue(torch.allclose(centered, torch.zeros_like(centered), atol=1e-6))
+
     def test_hard_update_used_when_tau_is_zero(self):
         config = DDQNConfig(tau=0.0, target_update_interval=1, batch_size=8, replay_capacity=100)
         agent = DoubleDQNAgent(4, 3, config, seed=0, device="cpu")

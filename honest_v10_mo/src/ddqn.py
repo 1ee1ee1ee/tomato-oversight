@@ -80,6 +80,16 @@ class ReplayBuffer:
 
 
 class QNetwork(nn.Module):
+    """Dueling Q-network: Q(s, a) = V(s) + A(s, a) - mean_a A(s, a).
+
+    Scaled returns span roughly +-15 while per-action differences are as
+    small as ~3e-4 (one move cost).  A monolithic Q head must resolve that
+    ~1e-4 relative gap inside a single output, which made the greedy policy
+    flip between park-and-water and touring on tiny fitting noise.  Separate
+    value/advantage streams let the advantage head model only the small
+    action-dependent part.
+    """
+
     def __init__(self, observation_size: int, action_size: int, hidden_sizes: tuple[int, ...]):
         super().__init__()
         layers: list[nn.Module] = []
@@ -87,11 +97,15 @@ class QNetwork(nn.Module):
         for hidden_size in hidden_sizes:
             layers.extend((nn.Linear(input_size, hidden_size), nn.ReLU()))
             input_size = hidden_size
-        layers.append(nn.Linear(input_size, action_size))
-        self.network = nn.Sequential(*layers)
+        self.trunk = nn.Sequential(*layers)
+        self.value_head = nn.Linear(input_size, 1)
+        self.advantage_head = nn.Linear(input_size, action_size)
 
     def forward(self, observation: torch.Tensor) -> torch.Tensor:
-        return self.network(observation)
+        features = self.trunk(observation)
+        value = self.value_head(features)
+        advantage = self.advantage_head(features)
+        return value + advantage - advantage.mean(dim=-1, keepdim=True)
 
 
 def masked_argmax(q_values: torch.Tensor, action_masks: torch.Tensor) -> torch.Tensor:
