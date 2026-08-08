@@ -177,10 +177,15 @@ def main() -> None:
     parser.add_argument("--eval-seed", type=int, default=10_000)
     parser.add_argument("--eval-interval", type=int, default=50_000)
     parser.add_argument("--save-interval", type=int, default=50_000)
-    parser.add_argument("--n-steps", type=int, default=5)
+    parser.add_argument("--n-steps", type=int, default=10)
     parser.add_argument("--epsilon-start", type=float, default=1.0)
-    parser.add_argument("--epsilon-end", type=float, default=0.05)
-    parser.add_argument("--epsilon-decay-steps", type=int, default=600_000)
+    parser.add_argument("--epsilon-end", type=float, default=0.10)
+    parser.add_argument("--epsilon-decay-steps", type=int, default=300_000)
+    # Returns span roughly +-2000 official units; Huber loss cannot fit that
+    # scale and run1 collapsed after its 50k-step peak.  Scaling only the
+    # replay targets (logs stay in official units) keeps TD errors near the
+    # quadratic regime of the loss.
+    parser.add_argument("--reward-scale", type=float, default=0.01)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--moisture-potential-weight", type=float, default=1.0)
     parser.add_argument("--alive-potential-weight", type=float, default=5.0)
@@ -190,6 +195,8 @@ def main() -> None:
 
     if args.n_steps < 1:
         raise ValueError("--n-steps must be positive")
+    if args.reward_scale <= 0:
+        raise ValueError("--reward-scale must be positive")
     if args.moisture_potential_weight < 0 or args.alive_potential_weight < 0:
         raise ValueError("potential weights must be non-negative")
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -267,7 +274,7 @@ def main() -> None:
             (
                 observation,
                 action,
-                training_reward,
+                training_reward * args.reward_scale,
                 next_observation,
                 done,
                 next_action_mask,
@@ -373,6 +380,9 @@ def main() -> None:
             "n_steps": args.n_steps,
             "hidden_sizes": ddqn_config.hidden_sizes,
             "learning_rate": ddqn_config.learning_rate,
+            "replay_capacity": ddqn_config.replay_capacity,
+            "tau": ddqn_config.tau,
+            "reward_scale": args.reward_scale,
         },
         "potential_shaping": {
             "formula": "gamma * Phi(next_state) - Phi(state); terminal Phi = 0",

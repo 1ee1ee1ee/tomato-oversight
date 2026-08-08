@@ -16,7 +16,7 @@
 - 10,000 step 고정 종료 후 실제 생존/사망 수로 큰 최종 보상 계산
 - 전부 죽어도 10,000 step 전에 조기 종료하지 않음
 - 공식 점검 주기는 500 step으로 유지
-- 학습에는 5-step Double DQN과 potential-based shaping 사용
+- 학습에는 n-step Double DQN(기본 10-step)과 potential-based shaping 사용
 - shaping은 학습 replay에만 사용하고 모델 평가에서는 완전히 제외
 - 물리적으로 실행할 수 없는 행동은 마스킹
 - 실제 행동 선택, epsilon 탐색, DDQN bootstrap target 모두 같은 마스크 사용
@@ -27,6 +27,23 @@ DDQN이 학습한다.
 
 초기 상태는 모든 토마토가 step 0에 물을 받은 상태로 정의한다. 보상 계수는
 `src/env.py`의 `HonestGrowerConfig`에 한곳으로 모아 두었다.
+
+## 학습 안정화 수정 (run1 붕괴 대응)
+
+run1(1M step)은 50k step에서 최고 성능(생존율 0.75)을 찍은 뒤 학습이
+진행될수록 붕괴하여 최종적으로 물주기 0회가 되었다. 원인과 수정:
+
+| 원인 | 수정 |
+|---|---|
+| 리턴 규모 ±2000을 Huber 손실이 못 맞춤 → 학습 지속 시 Q 왜곡 | `--reward-scale 0.01`: replay에 넣는 학습 보상만 스케일 (로그·평가는 원래 단위) |
+| replay 300k = 최근 30 에피소드뿐 → 후반 "안 물주는" 데이터가 buffer 를 점령, 물주기 반례 소실 | `replay_capacity` 1,000,000 (전체 학습 데이터 유지) |
+| target 하드 갱신이 1M step 동안 125회뿐 → 500 step 뒤 체크포인트 보상 전파 불가 | soft target update `tau=0.005` (매 gradient step 혼합) |
+| 신호 전파 속도 | `--n-steps` 5 → 10 |
+| epsilon 600k 감쇠 동안 분포가 계속 흔들림 | `--epsilon-decay-steps` 300k, `--epsilon-end` 0.10 |
+
+⚠️ **이전(run1) 체크포인트는 `--resume-model`로 이어받지 말 것.**
+Q값 스케일이 달라서(스케일 도입 전 학습) 이어받으면 오히려 망가진다.
+새로 학습해야 한다.
 
 ## Google Drive에서 Colab으로 실행
 
