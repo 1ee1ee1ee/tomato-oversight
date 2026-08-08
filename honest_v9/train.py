@@ -194,7 +194,9 @@ def main() -> None:
     parser.add_argument("--total-steps", type=int, default=1_000_000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--eval-seed", type=int, default=10_000)
-    parser.add_argument("--eval-interval", type=int, default=50_000)
+    # Each evaluation costs eval-episodes x 10k env steps; at 50k intervals
+    # that overhead rivaled training itself, so evaluate every 100k.
+    parser.add_argument("--eval-interval", type=int, default=100_000)
     parser.add_argument("--save-interval", type=int, default=50_000)
     parser.add_argument("--n-steps", type=int, default=20)
     parser.add_argument("--epsilon-start", type=float, default=1.0)
