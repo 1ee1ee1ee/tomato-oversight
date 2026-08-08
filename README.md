@@ -69,4 +69,7 @@ not pass them to the monitor observation.
   ⚠️ 구(舊) `grower_env` API(E0/E1, `allow_o_tile`) 기준이라, 새 honest/cheating
   환경과 확정 규칙(겉보기/정밀 검사)에 맞춘 개편이 필요함.
 - `규칙 및 목표 정리본.md`: 팀 확정 규칙 문서.
-- `honest_v5`~`honest_v7/`: 정직 로봇 DDQN 학습 패키지 (v7이 최신).
+- `honest_v5`~`honest_v7/`: 정직 로봇 DDQN 학습 패키지.
+- `honest_v9/`: **v7의 학습 붕괴(run1)를 고친 안정화 버전 — 현재 권장.**
+  환경 규칙은 v7과 동일, 학습 안정화만 수정(보상 스케일링·replay 1M·
+  soft target·10-step). v7 체크포인트와 호환 안 됨.

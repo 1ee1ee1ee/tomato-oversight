@@ -1,4 +1,4 @@
-"""Train honest_v7 with masked 5-step DDQN and potential shaping."""
+"""Train honest_v9 with masked 5-step DDQN and potential shaping."""
 
 from __future__ import annotations
 
@@ -177,19 +177,26 @@ def main() -> None:
     parser.add_argument("--eval-seed", type=int, default=10_000)
     parser.add_argument("--eval-interval", type=int, default=50_000)
     parser.add_argument("--save-interval", type=int, default=50_000)
-    parser.add_argument("--n-steps", type=int, default=5)
+    parser.add_argument("--n-steps", type=int, default=10)
     parser.add_argument("--epsilon-start", type=float, default=1.0)
-    parser.add_argument("--epsilon-end", type=float, default=0.05)
-    parser.add_argument("--epsilon-decay-steps", type=int, default=600_000)
+    parser.add_argument("--epsilon-end", type=float, default=0.10)
+    parser.add_argument("--epsilon-decay-steps", type=int, default=300_000)
+    # Returns span roughly +-2000 official units; Huber loss cannot fit that
+    # scale and run1 collapsed after its 50k-step peak.  Scaling only the
+    # replay targets (logs stay in official units) keeps TD errors near the
+    # quadratic regime of the loss.
+    parser.add_argument("--reward-scale", type=float, default=0.01)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--moisture-potential-weight", type=float, default=1.0)
     parser.add_argument("--alive-potential-weight", type=float, default=5.0)
-    parser.add_argument("--output-dir", type=Path, default=Path("outputs/honest_v7"))
+    parser.add_argument("--output-dir", type=Path, default=Path("outputs/honest_v9"))
     parser.add_argument("--resume-model", type=Path)
     args = parser.parse_args()
 
     if args.n_steps < 1:
         raise ValueError("--n-steps must be positive")
+    if args.reward_scale <= 0:
+        raise ValueError("--reward-scale must be positive")
     if args.moisture_potential_weight < 0 or args.alive_potential_weight < 0:
         raise ValueError("potential weights must be non-negative")
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -204,7 +211,7 @@ def main() -> None:
     if args.resume_model:
         agent, _ = DoubleDQNAgent.load(args.resume_model, args.device, args.seed)
         if agent.observation_size != observation.shape[0] or agent.action_size != env.action_space.n:
-            raise ValueError("resume model is incompatible with this v7 environment")
+            raise ValueError("resume model is incompatible with this v9 environment")
         ddqn_config = agent.config
     else:
         agent = DoubleDQNAgent(
@@ -235,7 +242,7 @@ def main() -> None:
     water_attempts = successful_waters = blocked_moves = 0
     best_score = None
     best_step = 0
-    best_path = args.output_dir / "honest_v7_best.pt"
+    best_path = args.output_dir / "honest_v9_best.pt"
     started_at = time.perf_counter()
 
     for global_step in range(1, args.total_steps + 1):
@@ -267,7 +274,7 @@ def main() -> None:
             (
                 observation,
                 action,
-                training_reward,
+                training_reward * args.reward_scale,
                 next_observation,
                 done,
                 next_action_mask,
@@ -344,7 +351,7 @@ def main() -> None:
 
         if global_step % args.save_interval == 0:
             agent.save(
-                args.output_dir / "honest_v7_last.pt",
+                args.output_dir / "honest_v9_last.pt",
                 metadata={"training_step": global_step},
             )
             write_csv(args.output_dir / "training_episodes.csv", episode_rows)
@@ -352,7 +359,7 @@ def main() -> None:
 
     elapsed_seconds = time.perf_counter() - started_at
     env.close()
-    agent.save(args.output_dir / "honest_v7_last.pt", metadata={"training_step": args.total_steps})
+    agent.save(args.output_dir / "honest_v9_last.pt", metadata={"training_step": args.total_steps})
     if not best_path.exists():
         agent.save(best_path, metadata={"training_step": args.total_steps})
         best_step = args.total_steps
@@ -373,6 +380,9 @@ def main() -> None:
             "n_steps": args.n_steps,
             "hidden_sizes": ddqn_config.hidden_sizes,
             "learning_rate": ddqn_config.learning_rate,
+            "replay_capacity": ddqn_config.replay_capacity,
+            "tau": ddqn_config.tau,
+            "reward_scale": args.reward_scale,
         },
         "potential_shaping": {
             "formula": "gamma * Phi(next_state) - Phi(state); terminal Phi = 0",

@@ -1,6 +1,10 @@
-# honest_v7
+# honest_v9
 
 이 패키지는 합의한 최종 규칙 중 **정직 재배 로봇**만 학습한다.
+
+**v7과의 관계**: 환경 규칙(`src/env.py`)은 v7과 완전히 동일하다. v7의 1M step
+학습(run1)이 50k step 최고점 이후 붕괴한 문제를 고치기 위해 **학습 안정화만**
+수정한 버전이다(아래 "학습 안정화 수정" 참고). v7 체크포인트와 호환되지 않는다.
 
 ## 반영된 규칙
 
@@ -16,7 +20,7 @@
 - 10,000 step 고정 종료 후 실제 생존/사망 수로 큰 최종 보상 계산
 - 전부 죽어도 10,000 step 전에 조기 종료하지 않음
 - 공식 점검 주기는 500 step으로 유지
-- 학습에는 5-step Double DQN과 potential-based shaping 사용
+- 학습에는 n-step Double DQN(기본 10-step)과 potential-based shaping 사용
 - shaping은 학습 replay에만 사용하고 모델 평가에서는 완전히 제외
 - 물리적으로 실행할 수 없는 행동은 마스킹
 - 실제 행동 선택, epsilon 탐색, DDQN bootstrap target 모두 같은 마스크 사용
@@ -28,11 +32,28 @@ DDQN이 학습한다.
 초기 상태는 모든 토마토가 step 0에 물을 받은 상태로 정의한다. 보상 계수는
 `src/env.py`의 `HonestGrowerConfig`에 한곳으로 모아 두었다.
 
-## Google Drive에서 Colab으로 실행
+## 학습 안정화 수정 (run1 붕괴 대응)
 
-먼저 `honest_v7.zip`을 Google Drive의 원하는 폴더에 업로드한다.
+run1(1M step)은 50k step에서 최고 성능(생존율 0.75)을 찍은 뒤 학습이
+진행될수록 붕괴하여 최종적으로 물주기 0회가 되었다. 원인과 수정:
 
-### 1. Drive 마운트 및 압축 해제
+| 원인 | 수정 |
+|---|---|
+| 리턴 규모 ±2000을 Huber 손실이 못 맞춤 → 학습 지속 시 Q 왜곡 | `--reward-scale 0.01`: replay에 넣는 학습 보상만 스케일 (로그·평가는 원래 단위) |
+| replay 300k = 최근 30 에피소드뿐 → 후반 "안 물주는" 데이터가 buffer 를 점령, 물주기 반례 소실 | `replay_capacity` 1,000,000 (전체 학습 데이터 유지) |
+| target 하드 갱신이 1M step 동안 125회뿐 → 500 step 뒤 체크포인트 보상 전파 불가 | soft target update `tau=0.005` (매 gradient step 혼합) |
+| 신호 전파 속도 | `--n-steps` 5 → 10 |
+| epsilon 600k 감쇠 동안 분포가 계속 흔들림 | `--epsilon-decay-steps` 300k, `--epsilon-end` 0.10 |
+
+⚠️ **이전(run1) 체크포인트는 `--resume-model`로 이어받지 말 것.**
+Q값 스케일이 달라서(스케일 도입 전 학습) 이어받으면 오히려 망가진다.
+새로 학습해야 한다.
+
+## Colab에서 실행 (GitHub 저장소 기반)
+
+zip 업로드 없이 저장소에서 바로 최신 코드를 받아 실행한다.
+
+### 1. Drive 마운트 + 코드 내려받기
 
 Colab 첫 번째 셀:
 
@@ -41,12 +62,15 @@ from google.colab import drive
 drive.mount('/content/drive')
 ```
 
-두 번째 셀에서 zip 경로만 실제 업로드 위치에 맞게 바꾼다.
+두 번째 셀 (매 세션 실행 — pull로 항상 최신 코드 반영):
 
-```bash
-!rm -rf /content/honest_v7
-!unzip -q "/content/drive/MyDrive/honest_v7.zip" -d /content
-%cd /content/honest_v7
+```python
+import os
+os.chdir('/content')
+if not os.path.isdir('tomato-oversight'):
+    !git clone https://github.com/1ee1ee1ee/tomato-oversight.git
+!cd /content/tomato-oversight && git pull
+%cd /content/tomato-oversight/honest_v9
 !pip install -q -r requirements.txt
 ```
 
@@ -75,10 +99,10 @@ print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_
 !python train.py \
   --total-steps 1000000 \
   --device auto \
-  --output-dir "/content/drive/MyDrive/result_honest_v7"
+  --output-dir "/content/drive/MyDrive/result_honest_v9"
 ```
 
-기본값은 1,000,000 environment step, 5-step Double DQN이다. 공식 보상은
+기본값은 1,000,000 environment step, 10-step Double DQN이다. 공식 보상은
 500-step 점검 규칙을 그대로 사용한다. 학습 replay에는 다음 potential shaping을
 추가하지만, greedy 평가와 best 모델 선정에는 공식 보상과 실제 생존 상태만 쓴다.
 
@@ -94,8 +118,8 @@ terminal Phi = 0
 
 학습 중 50,000 step마다 다음 파일이 Drive에 갱신된다.
 
-- `honest_v7_last.pt`: 최근 모델
-- `honest_v7_best.pt`: 네 O 위치 평가에서 가장 좋은 모델
+- `honest_v9_last.pt`: 최근 모델
+- `honest_v9_best.pt`: 네 O 위치 평가에서 가장 좋은 모델
 - `training_episodes.csv`
 - `periodic_evaluation.csv`
 - `best_evaluation.csv`
@@ -107,15 +131,15 @@ terminal Phi = 0
 ```bash
 !python train.py \
   --total-steps 500000 \
-  --resume-model "/content/drive/MyDrive/result_honest_v7/honest_v7_last.pt" \
-  --output-dir "/content/drive/MyDrive/result_honest_v7"
+  --resume-model "/content/drive/MyDrive/result_honest_v9/honest_v9_last.pt" \
+  --output-dir "/content/drive/MyDrive/result_honest_v9"
 ```
 
 ### 6. 최종 평가
 
 ```bash
 !python evaluate.py \
-  --model "/content/drive/MyDrive/result_honest_v7/honest_v7_best.pt" \
+  --model "/content/drive/MyDrive/result_honest_v9/honest_v9_best.pt" \
   --episodes-per-o 3 \
   --device auto
 ```
@@ -125,7 +149,7 @@ terminal Phi = 0
 ## 파일 구조
 
 ```text
-honest_v7/
+honest_v9/
 ├── train.py
 ├── evaluate.py
 ├── requirements.txt

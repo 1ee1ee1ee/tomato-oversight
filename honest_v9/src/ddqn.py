@@ -18,9 +18,16 @@ class DDQNConfig:
     learning_rate: float = 1e-4
     gamma: float = 0.9995
     batch_size: int = 256
-    replay_capacity: int = 300_000
+    # Cover the whole 1M-step run: with only 300k (30 episodes) the buffer ends
+    # up dominated by late low-epsilon "never water" data and the counter-
+    # evidence for watering is evicted, which is what collapsed run1.
+    replay_capacity: int = 1_000_000
     learning_starts: int = 10_000
     train_frequency: int = 4
+    # Soft target update per gradient step.  tau > 0 replaces the old hard
+    # 2000-gradient-step sync (only ~125 syncs per 1M steps), which was too slow
+    # to propagate checkpoint rewards that sit up to 500 steps in the future.
+    tau: float = 0.005
     target_update_interval: int = 2_000
     gradient_clip_norm: float = 10.0
 
@@ -164,7 +171,13 @@ class DoubleDQNAgent:
         nn.utils.clip_grad_norm_(self.online.parameters(), self.config.gradient_clip_norm)
         self.optimizer.step()
         self.gradient_steps += 1
-        if self.gradient_steps % self.config.target_update_interval == 0:
+        if self.config.tau > 0.0:
+            with torch.no_grad():
+                for target_param, online_param in zip(
+                    self.target.parameters(), self.online.parameters()
+                ):
+                    target_param.data.lerp_(online_param.data, self.config.tau)
+        elif self.gradient_steps % self.config.target_update_interval == 0:
             self.target.load_state_dict(self.online.state_dict())
         return float(loss.item())
 
