@@ -97,9 +97,28 @@ class NStepAccumulator:
         )
 
 
-def evaluate(agent: DoubleDQNAgent, config: HonestGrowerConfig, seed: int) -> list[dict]:
+def evaluate(
+    agent: DoubleDQNAgent,
+    config: HonestGrowerConfig,
+    seed: int,
+    positions: list[tuple[int, int]] | None = None,
+    epsilon: float = 0.0,
+    episodes_per_position: int = 1,
+) -> list[dict]:
+    """Rollouts of the deployment policy, one or more per O position.
+
+    ``epsilon`` matches the deployed epsilon-greedy policy (0.0 = pure
+    greedy).  Stochastic evaluation repeats each position
+    ``episodes_per_position`` times.  Evaluating only the fixed O position
+    (instead of all four candidates, 40k env steps per evaluation) was the
+    largest single time saving of a training run.
+    """
     rows: list[dict] = []
-    for episode, o_position in enumerate(config.o_candidates):
+    eval_positions = list(positions) if positions is not None else list(config.o_candidates)
+    eval_positions = [
+        position for position in eval_positions for _ in range(max(1, episodes_per_position))
+    ]
+    for episode, o_position in enumerate(eval_positions):
         env = HonestTomatoEnv(config)
         observation, _ = env.reset(seed=seed + episode, options={"o_position": o_position})
         official_reward = 0.0
@@ -111,7 +130,7 @@ def evaluate(agent: DoubleDQNAgent, config: HonestGrowerConfig, seed: int) -> li
         while not (terminated or truncated):
             action = agent.select_action(
                 observation,
-                epsilon=0.0,
+                epsilon=epsilon,
                 action_mask=env.valid_action_mask,
             )
             observation, reward, terminated, truncated, info = env.step(action)
@@ -177,10 +196,23 @@ def main() -> None:
     parser.add_argument("--eval-seed", type=int, default=10_000)
     parser.add_argument("--eval-interval", type=int, default=50_000)
     parser.add_argument("--save-interval", type=int, default=50_000)
-    parser.add_argument("--n-steps", type=int, default=10)
+    parser.add_argument("--n-steps", type=int, default=20)
     parser.add_argument("--epsilon-start", type=float, default=1.0)
+    # Deployment policy is epsilon-greedy with the SAME epsilon used at the
+    # end of training.  Three validation runs showed the epsilon=0.10 policy
+    # tours and reaches 5/5 while the pure-greedy argmax policy is brittle
+    # (parks on one tomato or cycles); annealing epsilon toward 0 collapsed
+    # even the behavior policy.  The grower only needs to be a FIXED, decent
+    # policy for the overseer study — stochasticity is fine, so evaluation
+    # measures the same epsilon-greedy policy that gets deployed.
     parser.add_argument("--epsilon-end", type=float, default=0.10)
     parser.add_argument("--epsilon-decay-steps", type=int, default=300_000)
+    parser.add_argument("--eval-epsilon", type=float, default=0.10)
+    parser.add_argument("--eval-episodes", type=int, default=3,
+                        help="stochastic rollouts per O position at each evaluation")
+    # "1,1" trains and evaluates a single fixed O position (fast, simpler
+    # task); "cycle" restores the four-candidate rotation with 4-episode evals.
+    parser.add_argument("--o-position", type=str, default="1,1")
     # Returns span roughly +-2000 official units; Huber loss cannot fit that
     # scale and run1 collapsed after its 50k-step peak.  Scaling only the
     # replay targets (logs stay in official units) keeps TD errors near the
@@ -202,10 +234,18 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     env_config = HonestGrowerConfig()
+    if args.o_position == "cycle":
+        fixed_o = None
+        eval_positions = list(env_config.o_candidates)
+    else:
+        fixed_o = tuple(int(value) for value in args.o_position.split(","))
+        if fixed_o not in env_config.o_candidates:
+            raise ValueError(f"--o-position must be 'cycle' or one of {env_config.o_candidates}")
+        eval_positions = [fixed_o]
     env = HonestTomatoEnv(env_config)
     observation, info = env.reset(
         seed=args.seed,
-        options={"o_position": env_config.o_candidates[0]},
+        options={"o_position": fixed_o or env_config.o_candidates[0]},
     )
     ddqn_config = DDQNConfig()
     if args.resume_model:
@@ -333,12 +373,19 @@ def main() -> None:
             episode_training_reward = 0.0
             episode_checkpoint_reward = 0.0
             water_attempts = successful_waters = blocked_moves = 0
-            next_o = env_config.o_candidates[episode_index % len(env_config.o_candidates)]
+            next_o = fixed_o or env_config.o_candidates[episode_index % len(env_config.o_candidates)]
             next_seed = int(episode_seed_rng.integers(0, 2**31 - 1))
             observation, info = env.reset(seed=next_seed, options={"o_position": next_o})
 
         if global_step % args.eval_interval == 0:
-            rows = evaluate(agent, env_config, args.eval_seed)
+            rows = evaluate(
+                agent,
+                env_config,
+                args.eval_seed,
+                positions=eval_positions,
+                epsilon=args.eval_epsilon,
+                episodes_per_position=args.eval_episodes,
+            )
             summary = evaluation_summary(rows)
             periodic_rows.append({"global_step": global_step, **summary})
             current_score = score(summary)
@@ -365,12 +412,25 @@ def main() -> None:
         best_step = args.total_steps
 
     best_agent, _ = DoubleDQNAgent.load(best_path, args.device, args.seed)
-    final_rows = evaluate(best_agent, env_config, args.eval_seed)
+    final_rows = evaluate(
+        best_agent,
+        env_config,
+        args.eval_seed,
+        positions=eval_positions,
+        epsilon=args.eval_epsilon,
+        episodes_per_position=args.eval_episodes,
+    )
     final_summary = evaluation_summary(final_rows)
     summary = {
         "algorithm": "masked 5-step Double DQN with potential shaping" if args.n_steps == 5 else f"masked {args.n_steps}-step Double DQN with potential shaping",
         "seed": args.seed,
         "total_steps": args.total_steps,
+        "o_position": args.o_position,
+        "deployment_policy": {
+            "type": "epsilon-greedy with action masking",
+            "epsilon": args.eval_epsilon,
+            "note": "evaluation and best-model selection use this same policy",
+        },
         "best_training_step": best_step,
         "elapsed_seconds": elapsed_seconds,
         "device": str(agent.device),

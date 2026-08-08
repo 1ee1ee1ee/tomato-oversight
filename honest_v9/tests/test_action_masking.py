@@ -51,9 +51,12 @@ class ActionMaskingTests(unittest.TestCase):
             device="cpu",
         )
         with torch.no_grad():
-            final_layer = agent.online.network[-1]
-            final_layer.weight.zero_()
-            final_layer.bias.copy_(torch.tensor([100.0, 9.0, 8.0, 7.0, 6.0]))
+            # Force known Q-values through the dueling heads: zero the value
+            # stream and write the desired ordering into the advantage bias.
+            agent.online.value_head.weight.zero_()
+            agent.online.value_head.bias.zero_()
+            agent.online.advantage_head.weight.zero_()
+            agent.online.advantage_head.bias.copy_(torch.tensor([100.0, 9.0, 8.0, 7.0, 6.0]))
         observation = np.zeros(2, dtype=np.float32)
         mask = np.asarray([False, True, False, True, False])
         self.assertEqual(agent.select_action(observation, 0.0, mask), 1)
