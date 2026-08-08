@@ -16,12 +16,15 @@ tomato-oversight/
 ├─ src/
 │  ├─ __init__.py
 │  ├─ grower_env.py       # 재배 로봇 환경 (TomatoWateringEnv, E0/E1)
-│  └─ wrappers.py         # 학습용 래퍼 (신선도 관측 추가 + 보상 shaping)
+│  ├─ wrappers.py         # 재배 학습용 래퍼 (신선도 관측 추가 + 보상 shaping)
+│  ├─ policies.py         # 스크립트 재배 정책 (ScriptedHonest / ScriptedCheater)
+│  └─ overseer_env.py     # ★감시자 환경 (OverseerEnv, 체제1/2)★
 ├─ scripts/
 │  └─ 01_validate_env.py  # 환경 검증/시연 스크립트
 ├─ notebooks/             # 팀원별 Colab 노트북 (학습 실행)
 │  ├─ 00_colab_bootstrap.ipynb   # 환경 확인·시각화
-│  └─ 01_train_honest.ipynb      # 정직 로봇 DQN 학습
+│  ├─ 01_train_honest.ipynb      # 정직 로봇 DQN 학습
+│  └─ 03_train_overseer.ipynb    # ★감시자 DQN 학습 + 체제1/2 비교★
 ├─ models/                # 학습된 정책 (.zip은 Git 미포함 → Google Drive 보관)
 ├─ docs/
 │  └─ 설계문서.md          # 연구 설계 백브리핑
@@ -99,6 +102,9 @@ python scripts/01_validate_env.py --mode E1 --render --seed 42
 - [x] 환경 검증 스크립트
 - [x] Colab 부트스트랩 노트북 + matplotlib 렌더러 (`rgb_array`)
 - [x] 정직 로봇 DQN 학습 노트북 + 학습 래퍼 (`01_train_honest`)
+- [x] 스크립트 재배 정책 (정직/치터) — 감시자용 고정 상대
+- [x] **감시자 환경 (체제1/2) + 감시자 DQN 학습·비교 노트북 (`03_train_overseer`)**
+- [x] **최소 관통(vertical slice) 검증**: 체제2가 체제1 대비 압도적 적발 (파이프라인 완성)
+- [ ] 재배 로봇을 RL 학습 정책으로 교체 (스크립트 → 학습 정책)
 - [ ] 치터 로봇 DQN 학습 (`02_train_cheater`)
-- [ ] 감시자 환경 (체제 1 / 체제 2)
-- [ ] 감시자 DQN 학습 및 체제 비교 실험
+- [ ] 보상 상수 스윕 · S 타일 확장(E2/E3) · 설계 그대로(마름 500) 최종 실험
