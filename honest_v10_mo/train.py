@@ -210,8 +210,19 @@ def main() -> None:
     parser.add_argument("--epsilon-end", type=float, default=0.10)
     parser.add_argument("--epsilon-decay-steps", type=int, default=300_000)
     parser.add_argument("--eval-epsilon", type=float, default=0.10)
-    parser.add_argument("--eval-episodes", type=int, default=3,
+    # Stochastic rollouts have high variance: run1's 900k snapshot scored 3/3
+    # full survival at selection time and 1/3 on re-evaluation of the very
+    # same weights.  More episodes make best-model selection and the reported
+    # numbers trustworthy.
+    parser.add_argument("--eval-episodes", type=int, default=5,
                         help="stochastic rollouts per O position at each evaluation")
+    parser.add_argument("--final-eval-episodes", type=int, default=10,
+                        help="rollouts for the end-of-training report on the best model")
+    # Keep the late-training policy from churning: run1 reached a 5/5 policy
+    # around 900k and then drifted away from it under the constant 1e-4 rate
+    # (its last training episodes fell to alive=0).
+    parser.add_argument("--lr-final", type=float, default=1e-5,
+                        help="learning rate is annealed linearly to this value")
     # "1,1" trains and evaluates a single fixed O position (fast, simpler
     # task); "cycle" restores the four-candidate rotation with 4-episode evals.
     parser.add_argument("--o-position", type=str, default="1,1")
@@ -338,6 +349,12 @@ def main() -> None:
             and global_step % ddqn_config.train_frequency == 0
             and len(replay) >= ddqn_config.batch_size
         ):
+            progress = global_step / args.total_steps
+            current_lr = ddqn_config.learning_rate + progress * (
+                args.lr_final - ddqn_config.learning_rate
+            )
+            for parameter_group in agent.optimizer.param_groups:
+                parameter_group["lr"] = current_lr
             recent_losses.append(agent.train_step(replay))
 
         if done:
@@ -420,7 +437,7 @@ def main() -> None:
         args.eval_seed,
         positions=eval_positions,
         epsilon=args.eval_epsilon,
-        episodes_per_position=args.eval_episodes,
+        episodes_per_position=args.final_eval_episodes,
     )
     final_summary = evaluation_summary(final_rows)
     summary = {
@@ -445,6 +462,7 @@ def main() -> None:
             "replay_capacity": ddqn_config.replay_capacity,
             "tau": ddqn_config.tau,
             "reward_scale": args.reward_scale,
+            "lr_final": args.lr_final,
         },
         "potential_shaping": {
             "formula": "gamma * Phi(next_state) - Phi(state); terminal Phi = 0",
