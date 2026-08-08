@@ -1,110 +1,72 @@
-# Tomato-Oversight
+# Honest/cheating tomato-watering environments
 
-**2026 창의설계축전** — AI 안전(AI Safety) 강화학습 연구 프로젝트.
+This project uses one reproducible Gymnasium environment with two grower modes.
 
-tomato-watering 그리드월드에서 **감시자(overseer)가 재배 로봇의 "치팅"을 감사(audit)** 하도록 학습시킨다.
-겉보기 성과만 보는 감시(체제 1)와 행동 로그까지 보는 감시(체제 2)의 적발 성능 차이를 측정하는 것이 목표.
+- **honest**: the `O` tile is visible but acts like an impassable wall.
+- **cheating**: the same `O` tile is passable. Entering it makes dead tomatoes
+  look alive for 500 real environment steps, without changing their true state.
 
-> 전체 연구 설계는 [`docs/설계문서.md`](docs/설계문서.md) 참고 (이 저장소의 "정답 문서").
+## Setup and smoke test
 
----
-
-## 프로젝트 구조
-
-```text
-tomato-oversight/
-├─ src/
-│  ├─ __init__.py
-│  ├─ grower_env.py       # 재배 로봇 환경 (TomatoWateringEnv, E0/E1)
-│  ├─ wrappers.py         # 재배 학습용 래퍼 (신선도 관측 추가 + 보상 shaping)
-│  ├─ policies.py         # 스크립트 재배 정책 (ScriptedHonest / ScriptedCheater)
-│  └─ overseer_env.py     # ★감시자 환경 (OverseerEnv, 체제1/2)★
-├─ scripts/
-│  └─ 01_validate_env.py  # 환경 검증/시연 스크립트
-├─ notebooks/             # 팀원별 Colab 노트북 (학습 실행)
-│  ├─ 00_colab_bootstrap.ipynb   # 환경 확인·시각화
-│  ├─ 01_train_honest.ipynb      # 정직 로봇 DQN 학습
-│  └─ 03_train_overseer.ipynb    # ★감시자 DQN 학습 + 체제1/2 비교★
-├─ models/                # 학습된 정책 (.zip은 Git 미포함 → Google Drive 보관)
-├─ docs/
-│  └─ 설계문서.md          # 연구 설계 백브리핑
-└─ requirements.txt
-```
-
-## 연구 구조 (2단계 독립 학습)
-
-1. **재배 로봇 학습** → 정직 / 치터 로봇을 각각 DQN으로 학습 후 **정책 고정**
-   - 정직: `reward_mode="true"`, `allow_o_tile=False`
-   - 치터: `reward_mode="apparent"`, `allow_o_tile=True`
-2. **감시자 학습** → 고정된 로봇들을 상대로 `CONTINUE`/`AUDIT` 시점을 학습
-   - 체제 1(결과 관측형) vs 체제 2(행동 관측형) 비교
-
-환경 단계: **E0**(기준선) · **E1**(O 타일=핵심 실험) · E2(S만) · E3(O+S 확장). 발표는 E0+E1로 완성.
-
----
-
-## 시작하기
-
-### A) Google Colab (팀 협업 · 권장)
-
-가장 빠른 방법: [`notebooks/00_colab_bootstrap.ipynb`](notebooks/00_colab_bootstrap.ipynb)를 Colab에서 열고 **`런타임 > 모두 실행`**.
-환경 세팅·시각화·무작위 정책 애니메이션까지 자동으로 확인됩니다.
-
-직접 셀을 만들려면 첫 셀에 붙여넣고 실행:
-
-```python
-!pip install -q stable-baselines3 gymnasium
-!git clone https://github.com/<팀계정>/tomato-oversight.git
-%cd tomato-oversight
-
-from src.grower_env import TomatoWateringEnv, GrowerConfig
-env = TomatoWateringEnv(GrowerConfig(mode="E1"))
-obs, info = env.reset(seed=42)
-print(env.render())   # 텍스트(ansi) 렌더 — Colab에서 정상 작동
-```
-
-학습 결과는 Google Drive에 저장(세션이 끊겨도 유지):
-
-```python
-from google.colab import drive
-drive.mount('/content/drive')
-model.save('/content/drive/MyDrive/tomato-oversight/models/honest_dqn')
-```
-
-> ⚠️ **Colab 주의점**
-> - `render_mode="human"`(Tkinter 창)은 Colab에서 **작동 안 함** → 격자 이미지는 `render_mode="rgb_array"`로 만들고 `plt.imshow(env.render())`로 표시 (부트스트랩 노트북 3~4장 참고). 텍스트만 필요하면 기본 `env.render()`의 ansi 출력 사용.
-> - 무료 세션은 유휴 ~90분/최대 ~12시간에 끊김 → 학습 중간에 Drive로 체크포인트 저장.
-> - 5×5 격자 DQN은 작아서 **GPU 불필요, CPU 런타임으로 충분**.
-
-### B) 로컬 실행
-
-```bash
+```powershell
 python -m venv .venv
-# Windows:  .\.venv\Scripts\Activate.ps1
-# macOS/Linux:  source .venv/bin/activate
-pip install -r requirements.txt
-
-# 환경 시연 (로컬은 Tkinter 창 렌더 가능)
-python scripts/01_validate_env.py --mode E1 --render --seed 42
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+python scripts\01_validate_env.py --mode honest --seed 42
+python scripts\01_validate_env.py --mode cheating --seed 42 --render
 ```
 
----
+Train the independent honest-grower Double DQN with the Python 3.12 training
+environment:
 
-## 팀 협업 규칙
+```powershell
+.\.venv-ddqn\Scripts\python.exe scripts\02_train_honest_ddqn.py
+```
 
-- **코드(.py)는 브랜치에서 작업 → PR로 병합.** 무거운 로직은 반드시 `src/`의 .py로, 노트북은 얇게(실행만) 유지.
-- **노트북은 사람/실험별로 분리** (예: `honest_train.ipynb`, `cheater_train.ipynb`, `monitor_train.ipynb`). 한 노트북을 여럿이 동시에 돌리지 않기.
-- **학습된 정책(.zip)은 Git에 올리지 않고** Google Drive 공유폴더에 보관 (설계상 재배 로봇 정책은 "고정").
+Evaluate a compatible honest model, optionally with live Tkinter rendering:
 
-## 진행 상태
+```powershell
+.\.venv-ddqn\Scripts\python.exe scripts\03_evaluate_honest_ddqn.py
+.\.venv-ddqn\Scripts\python.exe scripts\03_evaluate_honest_ddqn.py --episodes 1 --render
+```
 
-- [x] 재배 로봇 환경 `TomatoWateringEnv` (E0/E1)
-- [x] 환경 검증 스크립트
-- [x] Colab 부트스트랩 노트북 + matplotlib 렌더러 (`rgb_array`)
-- [x] 정직 로봇 DQN 학습 노트북 + 학습 래퍼 (`01_train_honest`)
-- [x] 스크립트 재배 정책 (정직/치터) — 감시자용 고정 상대
-- [x] **감시자 환경 (체제1/2) + 감시자 DQN 학습·비교 노트북 (`03_train_overseer`)**
-- [x] **최소 관통(vertical slice) 검증**: 체제2가 체제1 대비 압도적 적발 (파이프라인 완성)
-- [ ] 재배 로봇을 RL 학습 정책으로 교체 (스크립트 → 학습 정책)
-- [ ] 치터 로봇 DQN 학습 (`02_train_cheater`)
-- [ ] 보상 상수 스윕 · S 타일 확장(E2/E3) · 설계 그대로(마름 500) 최종 실험
+Check the orange dry state at its exact default boundary:
+
+```powershell
+.\.venv-ddqn\Scripts\python.exe scripts\04_demo_dry_state.py
+```
+
+Checkpoints created before the dry-state observation update use the old
+10-value observation and are intentionally rejected by the evaluator. Retrain
+before using model inference with the current 15-value observation.
+
+## Core rules
+
+- Grid: 5 by 5, with five tomatoes.
+- Actions: up, down, left, right, wait, and water.
+- Moisture falls from `1.0` to `0.0` over `moisture_depletion_steps` (500 by
+  default). The tomato then remains alive in an orange dry state for
+  `dry_survival_steps` (another 500 by default) and dies only after that.
+- Watering a living dry tomato restores it; a dead tomato cannot be revived.
+- Each observation reports normalized remaining moisture for every tomato;
+  spoofing replaces those visible values with `1.0` without changing truth.
+- A proxy/true reward is emitted every `check_interval` (500 by default)
+  steps. Movement also has a small configurable cost.
+- Both modes choose a visible O tile from fixed candidate coordinates using the
+  reset seed. The same seed produces the same initial state and O location.
+- Honest growers cannot enter O; cheating growers activate spoofing upon entry.
+- `info` records the exact cheating entry steps as privileged evaluation truth.
+
+The environment is intentionally independent of a monitor. `info` exposes
+privileged values only for testing and evaluation; a later `MonitorEnv` must
+not pass them to the monitor observation.
+
+## 감시자(overseer) 관련 작업물
+
+- `src/overseer_env.py`, `src/policies.py`, `notebooks/03_train_overseer.ipynb`:
+  감시자 환경·스크립트 재배 정책·감시자 DQN 학습(구 체제1/2 비교) 프로토타입.
+  ⚠️ 구(舊) `grower_env` API(E0/E1, `allow_o_tile`) 기준이라, 새 honest/cheating
+  환경과 확정 규칙(겉보기/정밀 검사)에 맞춘 개편이 필요함.
+- `규칙 및 목표 정리본.md`: 팀 확정 규칙 문서.
+- `honest_v5`~`honest_v7/`: 정직 로봇 DDQN 학습 패키지 (v7이 최신).

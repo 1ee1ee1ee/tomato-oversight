@@ -1,4 +1,4 @@
-"""Run a short, deterministic E0/E1 environment smoke test."""
+"""Run a short, deterministic honest/cheating environment smoke test."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from src.grower_env import Action, GrowerConfig, TomatoWateringEnv
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("E0", "E1"), default="E1")
+    parser.add_argument("--mode", choices=("honest", "cheating"), default="cheating")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--render", action="store_true", help="open the Tkinter human-render window")
     parser.add_argument("--steps", type=int, default=18, help="number of demonstration actions")
