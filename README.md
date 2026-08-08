@@ -77,3 +77,7 @@ not pass them to the monitor observation.
 - `honest_v11/`: **최종·현재 권장 (모).** v10_mo 확정본 (평가 5판/최종
   10판·LR 감쇠). Colab 1M에서 full_survival 0.7(10판)·행동 해부
   재검증 0.95(20판) — 전원 순회 확인. 산출물 `honest_v11_*.pt`.
+- `cheater_v1/`: **순수 치팅 정책 학습 패키지 (규칙 v3.1).** v11 프레임 +
+  치팅 환경(O 진입→겉보기 적심 500·재진입 갱신, 겉보기 기준 보상,
+  초기상태 랜덤화). 관측 21차원(`obs[:20]`=honest 배치 → 배신형
+  스플라이싱 지원). 산출물 `cheater_v1_*.pt`.
