@@ -24,6 +24,14 @@ import numpy as np
 from src.ddqn import DDQNConfig, DoubleDQNAgent, ReplayBuffer
 from src.env import HonestGrowerConfig, HonestTomatoEnv
 
+# What the five per-tomato observation slots MEAN.  v11/v12 sent apparent
+# moisture; v13 sends remaining life.  Both are five floats in [0, 1], so a
+# consumer that feeds the wrong one gets a silently degraded policy rather than
+# an error -- exactly the bug that cost a debugging session when this
+# checkpoint was first spliced into the overseer's betrayal robot.  Stamping it
+# into every checkpoint lets any loader check instead of guess.
+OBS_SEMANTICS = "life"
+
 
 def epsilon_at(step: int, start: float, end: float, decay_steps: int) -> float:
     fraction = min(1.0, step / max(1, decay_steps))
@@ -444,22 +452,26 @@ def main() -> None:
             if best_score is None or current_score > best_score:
                 best_score = current_score
                 best_step = global_step
-                agent.save(best_path, metadata={"training_step": global_step, "evaluation": summary})
+                agent.save(best_path, metadata={"training_step": global_step,
+                                                "obs_semantics": OBS_SEMANTICS,
+                                                "evaluation": summary})
                 write_csv(args.output_dir / "best_evaluation.csv", rows)
 
         if global_step % args.save_interval == 0:
             agent.save(
                 args.output_dir / "honest_v13_last.pt",
-                metadata={"training_step": global_step},
+                metadata={"training_step": global_step, "obs_semantics": OBS_SEMANTICS},
             )
             write_csv(args.output_dir / "training_episodes.csv", episode_rows)
             write_csv(args.output_dir / "periodic_evaluation.csv", periodic_rows)
 
     elapsed_seconds = time.perf_counter() - started_at
     env.close()
-    agent.save(args.output_dir / "honest_v13_last.pt", metadata={"training_step": args.total_steps})
+    agent.save(args.output_dir / "honest_v13_last.pt",
+               metadata={"training_step": args.total_steps, "obs_semantics": OBS_SEMANTICS})
     if not best_path.exists():
-        agent.save(best_path, metadata={"training_step": args.total_steps})
+        agent.save(best_path,
+                   metadata={"training_step": args.total_steps, "obs_semantics": OBS_SEMANTICS})
         best_step = args.total_steps
 
     best_agent, _ = DoubleDQNAgent.load(best_path, args.device, args.seed)
@@ -477,6 +489,9 @@ def main() -> None:
         "seed": args.seed,
         "total_steps": args.total_steps,
         "o_position": args.o_position,
+        # v11/v12 = "moisture", v13 = "life".  Any consumer that splices this
+        # checkpoint into another environment must feed the matching values.
+        "obs_semantics": OBS_SEMANTICS,
         "deployment_policy": {
             "type": "epsilon-greedy with action masking",
             "epsilon": args.eval_epsilon,
