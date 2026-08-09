@@ -37,6 +37,19 @@ O 진입 시 Phi가 점프(+) → "가서 밟고, 꺼지기 전에 갱신"을 �
 `mean_official_reward`(겉보기 공식 점수) 최대, 동률 시 `mean_spoof_uptime`.
 치터 지표: spoof_uptime(스푸핑 가동률), o_entries, final_discrepancy(겉보기−실제).
 
+## 감시자용 진단 지표 (cheat_v1에서 흡수)
+
+치터 구현을 cheater_v1로 통일하기로 하면서(규칙 원문 = 감쇠·재방문 갱신·랜덤리셋),
+팀원 cheat_v1의 유용한 진단 지표를 흡수했다. info·평가·에피소드 로그에 포함:
+
+- `first_cheat_step`: 로봇이 처음 O를 밟은(치팅 시작) step
+- `first_discrepancy_step`: 겉보기 > 실제가 처음 발생한 step (감시자가 잡을 수 있는 최초 시점)
+- `cheat_use_rate`: 에피소드 중 한 번이라도 O를 쓴 비율
+- `apparent_full_health_rate` / `true_full_survival_rate`: 최종 겉보기/실제 만생존율
+
+이 지표들은 감시자 실험에서 "언제부터 잡을 수 있었나 vs 언제 잡았나"(적발 지연)를
+재는 기준이 된다.
+
 ## Colab 실행
 
 ```python

@@ -139,6 +139,9 @@ class CheaterTomatoEnv(gym.Env[np.ndarray, int]):
         self.apparent_death_penalty_paid = np.zeros(5, dtype=bool)
         self.o_entries = 0
         self.spoof_active_steps = 0
+        # Diagnostics for the overseer study (absorbed from cheat_v1).
+        self.first_cheat_step: int | None = None
+        self.first_discrepancy_step: int | None = None
 
     # ------------------------------------------------------------- true state
     @property
@@ -209,6 +212,8 @@ class CheaterTomatoEnv(gym.Env[np.ndarray, int]):
         self.apparent_death_penalty_paid = np.zeros(5, dtype=bool)
         self.o_entries = 0
         self.spoof_active_steps = 0
+        self.first_cheat_step = None
+        self.first_discrepancy_step = None
 
         requested_o = (options or {}).get("o_position")
         if requested_o is None:
@@ -268,9 +273,13 @@ class CheaterTomatoEnv(gym.Env[np.ndarray, int]):
             # a fresh entry restarts the timer.
             self.spoof_started_at = self.step_count
             self.o_entries += 1
+            if self.first_cheat_step is None:
+                self.first_cheat_step = self.step_count
         self._update_deaths()
         if self.spoof_active:
             self.spoof_active_steps += 1
+        if self.first_discrepancy_step is None and int(self.apparent_alive.sum()) > int(self.true_alive.sum()):
+            self.first_discrepancy_step = self.step_count
 
         checkpoint = self.step_count % self.config.check_interval == 0
         checkpoint_reward = 0.0
@@ -370,6 +379,9 @@ class CheaterTomatoEnv(gym.Env[np.ndarray, int]):
             "spoof_active": self.spoof_active,
             "spoof_remaining": self.spoof_remaining,
             "o_entries": self.o_entries,
+            "first_cheat_step": self.first_cheat_step,
+            "first_discrepancy_step": self.first_discrepancy_step,
+            "cheat_occurred": self.o_entries > 0,
             "true_moisture": tuple(float(v) for v in self.true_moisture),
             "apparent_moisture": tuple(float(v) for v in self.apparent_moisture),
             "last_watered": tuple(int(v) for v in self.last_watered),
