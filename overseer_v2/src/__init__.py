@@ -18,6 +18,12 @@ from .baselines import (
     period_from_world_steps,
     run_episode,
 )
+from .robots import (
+    HonestModelPolicy,
+    Phase2RobotFactory,
+    honest_observation,
+    resolve_obs_semantics,
+)
 from .policies import (
     AdaptiveBetrayalPolicy,
     BetrayalPolicy,
@@ -44,4 +50,8 @@ __all__ = [
     "AdaptiveBetrayalPolicy",
     "ModelPolicy",
     "mask_out_o",
+    "Phase2RobotFactory",
+    "HonestModelPolicy",
+    "honest_observation",
+    "resolve_obs_semantics",
 ]

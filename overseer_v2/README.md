@@ -95,12 +95,29 @@ overseer_v2/
   tests/           # 환경·정책·스플라이싱·적응형 검증 (28개)
 ```
 
-## Phase 2 (Colab, 예정)
+## Phase 2 — 역할 재배치 (2026-08-10 확정, `src/robots.py`)
 
-1. `honest_v11/v12_best.pt`(moisture 관측) + `cheater_v1_best.pt`를 로딩해 `ModelPolicy`
-   배신·적응형 로봇 구성 (`robot_factory`만 교체, 환경 코드 불변).
-   ⚠️ honest_v13은 **life 관측**이라 moisture 기반 월드와 비호환 — 스플라이싱엔 v11/v12 사용.
-2. 체제1·체제2 각각 DDQN 학습(`ddqn.py`).
-3. 평가: betrayal K 그리드 `{0,2k,4k,6k,8k}` + held-out 밴드 + adaptive cheat_fraction 스윕
-   + 대조군 N 스윕.
-4. 지표 3종 비교표·그래프 → **효율적 체제 선정 → 최종 감시자 확정**.
+직렬 배포 실측(v13 2.50 / v14 1.75 / v15 1.62 @f=1.0 — 전부 5.0 요구에 미달)과
+치터 경제학(겉보기=max(실제,스푸핑)이라 젖은 밭에선 치팅 무가치 → 학습 치터가
+적응형 안에서 치팅 안 함)에 따라, **학습 모델은 학습된 맥락에서만** 쓴다:
+
+| 에피소드 | 로봇 | 근거 |
+|---|---|---|
+| honest | **학습 v13** (life 관측) | 자기 학습 맥락, full 0.8 |
+| betrayal | **학습 v13 →K→ 학습 cheater_v1** | K 이후 치터가 전체 궤적 지배 → 밭이 마름 → 치팅이 이득 → in-distribution (스모크: K=0 첫 거짓말 ~325, K=4000 → ~4300) |
+| adaptive (처치 축) | **스크립트 + 스크립트** | 축은 조종 가능한 계측기여야 함 (span 0.818·alive 5.0) |
+| adaptive held-out | 스크립트 정직 + 학습 cheater_v1 (`adaptive_model_cheater=True`) | "이득일 때만 거짓말하는" 경제적 치터 |
+
+```python
+from src.robots import Phase2RobotFactory
+factory = Phase2RobotFactory("../scheduler_v2/models/honest_v13_best.pt",
+                             "../scheduler_v2/models/cheater_v1_best.pt")
+env = OverseerEnv(OverseerConfig(regime=2), robot_factory=factory)
+```
+
+`Phase2RobotFactory`는 체크포인트의 `obs_semantics` 태그를 검사하고 **life↔moisture
+변환을 자동 수행**한다(`honest_observation`). `ModelPolicy(honest_slice=True)`를
+v13+에 직접 쓰면 변환 없이 수분이 들어가 조용히 망가진다 — 쓰지 말 것.
+
+남은 것: 체제1·체제2 DDQN 학습(`train_overseer.py`) → K 그리드 `{0,2k,4k,6k,8k}` +
+held-out 밴드 + adaptive f 스윕 + 대조군 N 스윕 → 지표 3종 비교표 → **최종 감시자 확정**.
