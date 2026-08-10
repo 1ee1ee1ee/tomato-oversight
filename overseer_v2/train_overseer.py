@@ -215,8 +215,11 @@ def main() -> None:
             periodic_rows.append(row)
             print(f"  step {step:>7} | trained_cost {metrics['mean_cost']:8.2f} "
                   f"(audits {metrics['mean_audits']:5.1f}) vs periodic {baseline['mean_cost']:7.2f} "
-                  f"| caught(recent) {row['recent_caught_rate']}")
+                  f"| caught(recent) {row['recent_caught_rate']}", flush=True)
             recent_caught, recent_cheater = [], []
+            # Written every evaluation so a Drive output dir shows live progress.
+            _write_csv(args.output_dir / "periodic_evaluation.csv", periodic_rows)
+            agent.save(last_path, metadata={"step": step})
             if metrics["mean_cost"] < best_cost:
                 best_cost = metrics["mean_cost"]
                 agent.save(best_path, metadata={"step": step, "eval": metrics})
