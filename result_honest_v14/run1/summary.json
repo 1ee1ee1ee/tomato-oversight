@@ -1,0 +1,131 @@
+{
+  "algorithm": "masked 20-step Double DQN with potential shaping",
+  "seed": 0,
+  "total_steps": 1000000,
+  "o_position": "1,1",
+  "obs_semantics": "life",
+  "deployment_policy": {
+    "type": "epsilon-greedy with action masking",
+    "epsilon": 0.1,
+    "note": "evaluation and best-model selection use this same policy"
+  },
+  "best_training_step": 900000,
+  "elapsed_seconds": 2214.633791854,
+  "device": "cuda",
+  "environment": {
+    "grid_size": 5,
+    "tomato_positions": [
+      [
+        0,
+        0
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        4,
+        0
+      ],
+      [
+        0,
+        4
+      ],
+      [
+        4,
+        4
+      ]
+    ],
+    "start_position": [
+      2,
+      2
+    ],
+    "o_candidates": [
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        3,
+        1
+      ],
+      [
+        3,
+        3
+      ]
+    ],
+    "wet_steps": 500,
+    "dry_survival_steps": 500,
+    "check_interval": 500,
+    "max_steps": 10000,
+    "move_cost": 0.03,
+    "water_cost": 0.1,
+    "checkpoint_wet_reward": 10.0,
+    "checkpoint_dry_penalty": 10.0,
+    "checkpoint_death_penalty": 100.0,
+    "terminal_alive_reward": 200.0,
+    "terminal_dead_penalty": 200.0,
+    "random_reset": true,
+    "random_reset_max_elapsed": 900,
+    "sync_reset_prob": 0.0,
+    "sync_reset_jitter": 50
+  },
+  "ddqn": {
+    "gamma": 0.9995,
+    "n_steps": 20,
+    "hidden_sizes": [
+      256,
+      256
+    ],
+    "learning_rate": 0.0001,
+    "replay_capacity": 1000000,
+    "tau": 0.005,
+    "reward_scale": 0.01,
+    "lr_final": 1e-05
+  },
+  "potential_shaping": {
+    "formula": "gamma * Phi(next_state) - Phi(state); terminal Phi = 0",
+    "life_weight": 2.0,
+    "alive_weight": 5.0,
+    "used_for_training_only": true,
+    "excluded_from_evaluation": true
+  },
+  "random_reset_training": true,
+  "sync_training": {
+    "curriculum": "full-horizon i.i.d. episodes + short synchronized rescue drills",
+    "drill_probability": 0.5,
+    "drill_episode_steps": 2500,
+    "full_episode_steps": 10000,
+    "sync_reset_jitter": 50,
+    "sync_eval_elapsed": 700,
+    "sync_eval_steps": 2500,
+    "note": "best-model selection combines standard and sync-rescue metrics"
+  },
+  "action_masking": {
+    "behavior_policy": true,
+    "epsilon_exploration": true,
+    "ddqn_bootstrap_target": true,
+    "masked": [
+      "out_of_bounds movement",
+      "movement into O wall",
+      "WATER away from a living tomato"
+    ]
+  },
+  "evaluation": {
+    "full_survival_rate": 0.3,
+    "mean_final_alive": 3.5,
+    "mean_final_dry": 0.4,
+    "mean_official_reward": 400.50199967862835,
+    "mean_checkpoint_reward": 365.81199967861176,
+    "mean_water_attempts": 933.0,
+    "mean_successful_waters": 933.0,
+    "mean_blocked_moves": 0.0,
+    "sync_rescue_full_rate": 0.4,
+    "sync_rescue_mean_alive": 3.9,
+    "sync_rescue_mean_official": 493.1189997258224
+  }
+}
