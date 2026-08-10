@@ -134,6 +134,11 @@ class Phase2RobotFactory:
         device: str = "cpu",             # batch-1 inference: GPU overhead dominates
         seed: int = 0,
         adaptive_model_cheater: bool = False,
+        # rule v3.4: the adaptive robot's honest half is a SWAPPABLE model.
+        # Pass a rescue-capable checkpoint (e.g. honest_v16@1.5M); None keeps
+        # the scripted honest half (the pre-v3.4 treatment-axis instrument).
+        adaptive_honest_checkpoint: str | Path | None = None,
+        adaptive_honest_obs: str | None = None,
     ) -> None:
         from .ddqn import DoubleDQNAgent          # defers torch import
 
@@ -150,6 +155,16 @@ class Phase2RobotFactory:
         self.honest_obs = resolve_obs_semantics(honest_meta, honest_obs, name="honest")
         resolve_obs_semantics(cheater_meta, "moisture", name="cheater")
 
+        self._adaptive_honest_agent = None
+        self.adaptive_honest_obs = None
+        if adaptive_honest_checkpoint is not None:
+            self._adaptive_honest_agent, adaptive_meta = DoubleDQNAgent.load(
+                str(adaptive_honest_checkpoint), device, seed)
+            if self._adaptive_honest_agent.observation_size != 20:
+                raise ValueError("adaptive honest model must take 20 observation values")
+            self.adaptive_honest_obs = resolve_obs_semantics(
+                adaptive_meta, adaptive_honest_obs, name="adaptive honest")
+
     # -- robot pieces ------------------------------------------------------
     def _model_honest(self) -> HonestModelPolicy:
         return HonestModelPolicy(self._honest_agent, semantics=self.honest_obs,
@@ -158,6 +173,13 @@ class Phase2RobotFactory:
     def _model_cheater(self) -> ModelPolicy:
         return ModelPolicy(self._cheater_agent, honest_slice=False,
                            epsilon=self.epsilon)
+
+    def _adaptive_honest_half(self):
+        if self._adaptive_honest_agent is not None:
+            return HonestModelPolicy(self._adaptive_honest_agent,
+                                     semantics=self.adaptive_honest_obs,
+                                     epsilon=self.epsilon)
+        return ScriptedHonest()
 
     # -- the factory the env calls -----------------------------------------
     def __call__(self, spec):
@@ -169,18 +191,19 @@ class Phase2RobotFactory:
             cheat_half = self._model_cheater() if self.adaptive_model_cheater \
                 else ScriptedCheater()
             return AdaptiveBetrayalPolicy(
-                ScriptedHonest(), cheat_half,
+                self._adaptive_honest_half(), cheat_half,
                 cheat_fraction=spec.cheat_fraction,
                 enforce_survival=spec.enforce_survival,
             )
         raise ValueError(f"unknown episode kind: {spec.kind}")
 
     def describe(self) -> dict:
+        adaptive_honest = ("model (" + str(self.adaptive_honest_obs) + ")"
+                           if self._adaptive_honest_agent is not None else "scripted")
+        adaptive_cheater = "model (economic)" if self.adaptive_model_cheater else "scripted"
         return {
             "honest": f"model ({self.honest_obs})",
             "betrayal": "model honest -> model cheater at K",
-            "adaptive": ("scripted honest + model cheater (held-out economic)"
-                         if self.adaptive_model_cheater
-                         else "scripted honest + scripted cheater (treatment axis)"),
+            "adaptive": f"{adaptive_honest} honest + {adaptive_cheater} cheater (scheduler-switched)",
             "epsilon": self.epsilon,
         }

@@ -94,6 +94,25 @@ class FactoryIntegrationTests(unittest.TestCase):
         self.assertNotIsInstance(adaptive.honest, HonestModelPolicy)
         self.assertIsInstance(adaptive.cheater, ScriptedCheater)
 
+    def test_adaptive_honest_half_is_swappable_model(self) -> None:
+        # rule v3.4: the adaptive robot's honest half is a plug-in checkpoint.
+        from src.robots import Phase2RobotFactory
+        v16 = MODELS / "honest_v16_best.pt"
+        if not v16.exists():
+            self.skipTest("honest_v16_best.pt not present")
+        factory = Phase2RobotFactory(
+            MODELS / "honest_v13_best.pt",
+            MODELS / "cheater_v1_best.pt",
+            adaptive_honest_checkpoint=v16,
+        )
+        self.assertEqual(factory.adaptive_honest_obs, "life")   # tag resolved
+        adaptive = factory(EpisodeSpec("adaptive", cheat_fraction=0.5))
+        self.assertIsInstance(adaptive.honest, HonestModelPolicy)
+        self.assertIsInstance(adaptive.cheater, ScriptedCheater)
+        # The plain-honest episode still uses the MAIN honest agent, not v16.
+        honest = factory(EpisodeSpec("honest"))
+        self.assertIs(honest.honest.agent, factory._honest_agent)
+
     def test_held_out_variant_uses_model_cheater(self) -> None:
         from src.robots import Phase2RobotFactory
         factory = Phase2RobotFactory(

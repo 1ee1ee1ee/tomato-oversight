@@ -32,29 +32,30 @@ from src.baselines import (
 from src.ddqn import DDQNConfig, DoubleDQNAgent, ReplayBuffer
 from src.env import OverseerConfig, OverseerEnv, default_robot_factory
 
-# Fixed evaluation grid (rule v3.3 scope): honest control + betrayal K sweep.
+# Fixed evaluation grid (rule v3.4 scope): honest control + adaptive
+# deception-intensity sweep.  The adaptive robot is the scheduler: it switches
+# between its honest model and its cheater on its own, state-based.
 EVAL_SCENARIOS = [
     ("honest", dict(force_episode="honest")),
-    ("betrayal_k0", dict(force_episode="betrayal", fixed_k=0)),
-    ("betrayal_k2000", dict(force_episode="betrayal", fixed_k=2000)),
-    ("betrayal_k4000", dict(force_episode="betrayal", fixed_k=4000)),
-    ("betrayal_k6000", dict(force_episode="betrayal", fixed_k=6000)),
-]
-
-# Deferred scope (rule v3.3): the adaptive cheater is future work.  Enable with
-# --include-adaptive to add these back to every evaluation.
-ADAPTIVE_SCENARIOS = [
     ("adaptive_f0.3", dict(force_episode="adaptive", fixed_cheat_fraction=0.3)),
     ("adaptive_f0.6", dict(force_episode="adaptive", fixed_cheat_fraction=0.6)),
     ("adaptive_f0.9", dict(force_episode="adaptive", fixed_cheat_fraction=0.9)),
 ]
 
-# Held-out betrayal timings (rule v3.1 bands [1500,2500] and [5500,6500],
-# representatives off the K grid) — final report only, to show the overseer
-# learned a principle rather than the evaluation timetable.
+# Held-out deception intensities (off the training-eval grid) — final report
+# only, to show the overseer learned a principle rather than the grid.
 HELD_OUT_SCENARIOS = [
-    ("betrayal_k1800_held", dict(force_episode="betrayal", fixed_k=1800)),
-    ("betrayal_k6200_held", dict(force_episode="betrayal", fixed_k=6200)),
+    ("adaptive_f0.45_held", dict(force_episode="adaptive", fixed_cheat_fraction=0.45)),
+    ("adaptive_f0.75_held", dict(force_episode="adaptive", fixed_cheat_fraction=0.75)),
+]
+
+# Removed scope (rule v3.4): the one-way betrayal robot was cut from the main
+# experiment.  Enable with --include-betrayal to add these back.
+BETRAYAL_SCENARIOS = [
+    ("betrayal_k0", dict(force_episode="betrayal", fixed_k=0)),
+    ("betrayal_k2000", dict(force_episode="betrayal", fixed_k=2000)),
+    ("betrayal_k4000", dict(force_episode="betrayal", fixed_k=4000)),
+    ("betrayal_k6000", dict(force_episode="betrayal", fixed_k=6000)),
 ]
 
 ACTION_MASK = np.ones(2, dtype=bool)   # CONTINUE and AUDIT are always valid
@@ -141,25 +142,29 @@ def main() -> None:
                         default=Path("../scheduler_v2/models/honest_v13_best.pt"))
     parser.add_argument("--cheater-checkpoint", type=Path,
                         default=Path("../scheduler_v2/models/cheater_v1_best.pt"))
-    # Episode mix (rule v3.3): the main experiment runs TWO robot kinds —
-    # honest and betrayal.  The adaptive cheater is deferred future work.
+    # Episode mix (rule v3.4): the main experiment runs TWO robot kinds —
+    # honest and the adaptive (scheduler) cheater.  Betrayal was cut.
     parser.add_argument("--honest-prob", type=float, default=0.5)
-    parser.add_argument("--adaptive-prob", type=float, default=0.0)
+    parser.add_argument("--adaptive-prob", type=float, default=0.5)
     # "balanced" cycles the enabled robot kinds deterministically so training
     # sees EXACTLY equal episode counts per kind (no binomial drift).
     parser.add_argument("--episode-schedule", choices=("random", "balanced"),
                         default="balanced")
-    parser.add_argument("--include-adaptive", action="store_true",
-                        help="add the adaptive f-sweep back into every evaluation")
+    parser.add_argument("--include-betrayal", action="store_true",
+                        help="add the betrayal K-sweep back into every evaluation")
+    # The adaptive robot's honest half (swappable checkpoint, rule v3.4).
+    parser.add_argument("--adaptive-honest-checkpoint", type=Path,
+                        default=Path("../scheduler_v2/models/honest_v16_best.pt"))
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    eval_scenarios = EVAL_SCENARIOS + (ADAPTIVE_SCENARIOS if args.include_adaptive else [])
+    eval_scenarios = EVAL_SCENARIOS + (BETRAYAL_SCENARIOS if args.include_betrayal else [])
 
     if args.robots == "phase2":
         from src.robots import Phase2RobotFactory
         robot_factory = Phase2RobotFactory(
             args.honest_checkpoint, args.cheater_checkpoint, device="cpu",
+            adaptive_honest_checkpoint=args.adaptive_honest_checkpoint,
         )
         print("robots:", robot_factory.describe())
     else:
@@ -277,7 +282,8 @@ def main() -> None:
         "episode_mix": {"honest_prob": args.honest_prob,
                         "adaptive_prob": args.adaptive_prob,
                         "episode_schedule": args.episode_schedule,
-                        "note": "rule v3.3: main experiment = honest + betrayal, equal episode counts"},
+                        "adaptive_honest_checkpoint": str(args.adaptive_honest_checkpoint),
+                        "note": "rule v3.4: main experiment = honest + adaptive(scheduler), equal episode counts"},
         "checkpoints": {
             "honest": str(args.honest_checkpoint),
             "cheater": str(args.cheater_checkpoint),
