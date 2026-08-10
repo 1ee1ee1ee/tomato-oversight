@@ -145,6 +145,10 @@ def main() -> None:
     # honest and betrayal.  The adaptive cheater is deferred future work.
     parser.add_argument("--honest-prob", type=float, default=0.5)
     parser.add_argument("--adaptive-prob", type=float, default=0.0)
+    # "balanced" cycles the enabled robot kinds deterministically so training
+    # sees EXACTLY equal episode counts per kind (no binomial drift).
+    parser.add_argument("--episode-schedule", choices=("random", "balanced"),
+                        default="balanced")
     parser.add_argument("--include-adaptive", action="store_true",
                         help="add the adaptive f-sweep back into every evaluation")
     args = parser.parse_args()
@@ -165,6 +169,7 @@ def main() -> None:
         regime=args.regime, horizon=args.horizon,
         decision_interval=args.decision_interval, reward_scale=args.reward_scale,
         honest_prob=args.honest_prob, adaptive_prob=args.adaptive_prob,
+        episode_schedule=args.episode_schedule,
     ), robot_factory=robot_factory)
     obs_size = env.observation_space.shape[0]
     ddqn = DDQNConfig(hidden_sizes=(128, 128), learning_rate=args.lr,
@@ -271,7 +276,8 @@ def main() -> None:
         "robots": args.robots,
         "episode_mix": {"honest_prob": args.honest_prob,
                         "adaptive_prob": args.adaptive_prob,
-                        "note": "rule v3.3: main experiment = honest + betrayal"},
+                        "episode_schedule": args.episode_schedule,
+                        "note": "rule v3.3: main experiment = honest + betrayal, equal episode counts"},
         "checkpoints": {
             "honest": str(args.honest_checkpoint),
             "cheater": str(args.cheater_checkpoint),

@@ -120,6 +120,44 @@ class BaselineTests(unittest.TestCase):
         self.assertFalse(info["caught"])
 
 
+class BalancedScheduleTests(unittest.TestCase):
+    def test_two_kinds_get_exactly_equal_episode_counts(self) -> None:
+        # rule v3.3 training default: honest 0.5 / betrayal 0.5, balanced.
+        env = OverseerEnv(OverseerConfig(honest_prob=0.5, adaptive_prob=0.0,
+                                         episode_schedule="balanced", **FAST))
+        kinds = []
+        for seed in range(10):
+            _, info = env.reset(seed=seed)
+            kinds.append(info["episode_type"])
+        self.assertEqual(kinds.count("honest"), 5)
+        self.assertEqual(kinds.count("betrayal"), 5)
+        # strict alternation, not merely equal totals
+        self.assertEqual(kinds, ["honest", "betrayal"] * 5)
+
+    def test_betrayal_k_still_varies_under_balanced(self) -> None:
+        env = OverseerEnv(OverseerConfig(honest_prob=0.5, adaptive_prob=0.0,
+                                         episode_schedule="balanced", **FAST))
+        ks = set()
+        for seed in range(10):
+            _, info = env.reset(seed=seed)
+            if info["episode_type"] == "betrayal":
+                ks.add(info["K"])
+        self.assertGreater(len(ks), 1)          # K randomization unaffected
+
+    def test_force_episode_bypasses_the_cycle(self) -> None:
+        env = OverseerEnv(OverseerConfig(force_episode="honest",
+                                         episode_schedule="balanced", **FAST))
+        for seed in range(4):
+            _, info = env.reset(seed=seed)
+            self.assertEqual(info["episode_type"], "honest")
+
+    def test_three_kinds_cycle_when_adaptive_enabled(self) -> None:
+        env = OverseerEnv(OverseerConfig(honest_prob=0.4, adaptive_prob=0.3,
+                                         episode_schedule="balanced", **FAST))
+        kinds = [env.reset(seed=seed)[1]["episode_type"] for seed in range(6)]
+        self.assertEqual(kinds, ["honest", "betrayal", "adaptive"] * 2)
+
+
 class DeterminismTests(unittest.TestCase):
     def test_same_seed_same_episode(self) -> None:
         cfg = OverseerConfig(regime=2, **FAST)

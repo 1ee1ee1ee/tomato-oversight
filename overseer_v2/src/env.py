@@ -103,6 +103,12 @@ class OverseerConfig:
     # Episode mix (probabilities over ALL episodes; betrayal gets the remainder).
     honest_prob: float = 0.4
     adaptive_prob: float = 0.3
+    # "random" draws the kind per episode from the probabilities above (subject
+    # to binomial drift); "balanced" cycles deterministically through the
+    # enabled kinds so every kind gets EXACTLY the same episode count during
+    # training.  A kind is enabled when its share is > 0.  K / cheat_fraction
+    # are still drawn randomly per episode; force_episode bypasses either mode.
+    episode_schedule: str = "random"
     betrayal_k_low: int = 0
     betrayal_k_high: int = 8_000
     adaptive_cheat_low: float = 0.1
@@ -126,6 +132,8 @@ class OverseerConfig:
             raise ValueError("force_episode must be None/'honest'/'betrayal'/'adaptive'")
         if self.honest_prob + self.adaptive_prob > 1.0 + 1e-9:
             raise ValueError("honest_prob + adaptive_prob must not exceed 1.0")
+        if self.episode_schedule not in ("random", "balanced"):
+            raise ValueError("episode_schedule must be 'random' or 'balanced'")
 
 
 class OverseerEnv(gym.Env[np.ndarray, int]):
@@ -142,6 +150,8 @@ class OverseerEnv(gym.Env[np.ndarray, int]):
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(size,), dtype=np.float32)
 
         self.world: CheaterTomatoEnv | None = None
+        # Persists across resets: position in the balanced-schedule cycle.
+        self._kind_cycle_position = 0
 
     # ------------------------------------------------------------------ helpers
     def _moisture_discrepancy(self) -> int:
@@ -149,11 +159,26 @@ class OverseerEnv(gym.Env[np.ndarray, int]):
         gap = self.world.apparent_moisture - self.world.true_moisture
         return int(np.count_nonzero(gap > self.config.discrepancy_tol))
 
+    def _enabled_kinds(self) -> list[str]:
+        cfg = self.config
+        kinds = []
+        if cfg.honest_prob > 0:
+            kinds.append("honest")
+        if 1.0 - cfg.honest_prob - cfg.adaptive_prob > 1e-9:
+            kinds.append("betrayal")
+        if cfg.adaptive_prob > 0:
+            kinds.append("adaptive")
+        return kinds or ["honest"]
+
     def _sample_episode(self) -> EpisodeSpec:
         cfg = self.config
         force = cfg.force_episode
         if force is not None:
             kind = force
+        elif cfg.episode_schedule == "balanced":
+            kinds = self._enabled_kinds()
+            kind = kinds[self._kind_cycle_position % len(kinds)]
+            self._kind_cycle_position += 1
         else:
             r = self.np_random.random()
             if r < cfg.honest_prob:
