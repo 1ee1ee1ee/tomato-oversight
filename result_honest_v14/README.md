@@ -37,15 +37,12 @@ best = **900k**, 최종 10판 재평가:
 
 ## 파일
 
+- `run1/honest_v14_best.pt` — **best 체크포인트 (900k, obs_semantics=life 태그 포함)**
+- `run1/honest_v14_last.pt` — 최종 체크포인트 (1M)
 - `run1/summary.json` — 설정·최종 지표 전체
 - `run1/periodic_evaluation.csv` — 100k마다 표준+sync 학습 곡선
+- `run1/training_episodes.csv` — 에피소드 159개 학습 궤적 (drill 79 / full 80)
 - `run1/best_evaluation.csv` / `best_sync_evaluation.csv` — 선정 시점(900k) 5판
 - `run1/final_evaluation.csv` / `final_sync_evaluation.csv` — 최종 10판 상세
 
-**`.pt` 모델·training_episodes.csv는 Drive에** (`MyDrive/result_honest_v14/run1/`,
-justin040531@gmail.com). repo에 넣으려면 Colab에서:
-
-```python
-!cp "/content/drive/MyDrive/result_honest_v14/run1/honest_v14_best.pt" /content/tomato-oversight/result_honest_v14/run1/
-!cd /content/tomato-oversight && git add result_honest_v14 && git commit -m "add v14 best.pt" && git push
-```
+원본은 Drive `MyDrive/result_honest_v14/run1/` (justin040531@gmail.com).
