@@ -30,7 +30,7 @@ from src.baselines import (
     run_episode,
 )
 from src.ddqn import DDQNConfig, DoubleDQNAgent, ReplayBuffer
-from src.env import OverseerConfig, OverseerEnv, default_robot_factory
+from src.env import OverseerAction, OverseerConfig, OverseerEnv, default_robot_factory
 
 # Fixed evaluation grid (rule v3.4 scope): honest control + adaptive
 # deception-intensity sweep.  The adaptive robot is the scheduler: it switches
@@ -110,9 +110,17 @@ def eval_policy(make_policy, regime: int, horizon: int, interval: int, seeds,
         }
         all_costs.extend(costs)
         all_audits.extend(audits)
+
+    def ci95(values):
+        # 95% CI half-width of the mean (t~1.96, normal approx over eval seeds).
+        arr = np.asarray(values, dtype=float)
+        return float(1.96 * arr.std(ddof=1) / np.sqrt(len(arr))) if len(arr) > 1 else 0.0
+
     return {
         "mean_cost": float(np.mean(all_costs)),
+        "cost_ci95": ci95(all_costs),
         "mean_audits": float(np.mean(all_audits)),
+        "audits_ci95": ci95(all_audits),
         "per_scenario": per_scen,
     }
 
@@ -150,6 +158,8 @@ def main() -> None:
     # sees EXACTLY equal episode counts per kind (no binomial drift).
     parser.add_argument("--episode-schedule", choices=("random", "balanced"),
                         default="balanced")
+    parser.add_argument("--warmup-episodes", type=int, default=8,
+                        help="AlwaysAudit episodes to seed the replay (escapes the never-audit trap)")
     parser.add_argument("--include-betrayal", action="store_true",
                         help="add the betrayal K-sweep back into every evaluation")
     # The adaptive robot's honest half (swappable checkpoint, rule v3.4).
@@ -196,6 +206,23 @@ def main() -> None:
     best_cost = float("inf")
     periodic_rows = []
     start_time = time.time()
+
+    # Warm the replay with AlwaysAudit transitions so the buffer contains
+    # "audit -> catch -> episode ends -> no more damage" experiences before
+    # learning starts.  This does NOT bias the learned policy (the agent still
+    # chooses its own actions from step 1); it only ensures the never-audit
+    # local optimum is not the only thing in the buffer.  Without it, escape
+    # from never-audit took 45k steps in r2_run2 and could fail on some seeds.
+    if args.warmup_episodes > 0:
+        warm = env.reset(seed=args.seed + 999)[0]
+        for _ in range(args.warmup_episodes):
+            done = False
+            while not done:
+                a = int(OverseerAction.AUDIT)
+                nxt, r, term, trunc, _ = env.step(a)
+                done = term or trunc
+                replay.add(warm, a, r, nxt, 0.0 if done else ddqn.gamma, ACTION_MASK)
+                warm = nxt if not done else env.reset()[0]
 
     obs, info = env.reset(seed=args.seed)
     ep_cost, ep_return = 0.0, 0.0
