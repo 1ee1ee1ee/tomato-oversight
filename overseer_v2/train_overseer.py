@@ -32,13 +32,18 @@ from src.baselines import (
 from src.ddqn import DDQNConfig, DoubleDQNAgent, ReplayBuffer
 from src.env import OverseerConfig, OverseerEnv, default_robot_factory
 
-# Fixed evaluation grid: honest control + betrayal K sweep + adaptive f sweep.
+# Fixed evaluation grid (rule v3.3 scope): honest control + betrayal K sweep.
 EVAL_SCENARIOS = [
     ("honest", dict(force_episode="honest")),
     ("betrayal_k0", dict(force_episode="betrayal", fixed_k=0)),
     ("betrayal_k2000", dict(force_episode="betrayal", fixed_k=2000)),
     ("betrayal_k4000", dict(force_episode="betrayal", fixed_k=4000)),
     ("betrayal_k6000", dict(force_episode="betrayal", fixed_k=6000)),
+]
+
+# Deferred scope (rule v3.3): the adaptive cheater is future work.  Enable with
+# --include-adaptive to add these back to every evaluation.
+ADAPTIVE_SCENARIOS = [
     ("adaptive_f0.3", dict(force_episode="adaptive", fixed_cheat_fraction=0.3)),
     ("adaptive_f0.6", dict(force_episode="adaptive", fixed_cheat_fraction=0.6)),
     ("adaptive_f0.9", dict(force_episode="adaptive", fixed_cheat_fraction=0.9)),
@@ -136,8 +141,16 @@ def main() -> None:
                         default=Path("../scheduler_v2/models/honest_v13_best.pt"))
     parser.add_argument("--cheater-checkpoint", type=Path,
                         default=Path("../scheduler_v2/models/cheater_v1_best.pt"))
+    # Episode mix (rule v3.3): the main experiment runs TWO robot kinds —
+    # honest and betrayal.  The adaptive cheater is deferred future work.
+    parser.add_argument("--honest-prob", type=float, default=0.5)
+    parser.add_argument("--adaptive-prob", type=float, default=0.0)
+    parser.add_argument("--include-adaptive", action="store_true",
+                        help="add the adaptive f-sweep back into every evaluation")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    eval_scenarios = EVAL_SCENARIOS + (ADAPTIVE_SCENARIOS if args.include_adaptive else [])
 
     if args.robots == "phase2":
         from src.robots import Phase2RobotFactory
@@ -151,6 +164,7 @@ def main() -> None:
     env = OverseerEnv(OverseerConfig(
         regime=args.regime, horizon=args.horizon,
         decision_interval=args.decision_interval, reward_scale=args.reward_scale,
+        honest_prob=args.honest_prob, adaptive_prob=args.adaptive_prob,
     ), robot_factory=robot_factory)
     obs_size = env.observation_space.shape[0]
     ddqn = DDQNConfig(hidden_sizes=(128, 128), learning_rate=args.lr,
@@ -163,7 +177,7 @@ def main() -> None:
     period = period_from_world_steps(500, args.decision_interval)
     baseline = eval_policy(lambda: PeriodicAuditor(period), args.regime,
                            args.horizon, args.decision_interval, eval_seeds,
-                           robot_factory=robot_factory)
+                           robot_factory=robot_factory, scenarios=eval_scenarios)
     print(f"[regime {args.regime}] obs={obs_size}  device={agent.device}  "
           f"periodic(N=500) baseline mean_cost={baseline['mean_cost']:.2f}")
 
@@ -202,7 +216,7 @@ def main() -> None:
         if step % args.eval_interval == 0 or step == args.total_steps:
             metrics = eval_policy(lambda: GreedyOverseer(agent), args.regime,
                                   args.horizon, args.decision_interval, eval_seeds,
-                                  robot_factory=robot_factory)
+                                  robot_factory=robot_factory, scenarios=eval_scenarios)
             row = {
                 "step": step,
                 "trained_cost": metrics["mean_cost"],
@@ -242,7 +256,7 @@ def main() -> None:
         "always": AlwaysAudit,
         "never": NeverAudit,
     }
-    final_scenarios = EVAL_SCENARIOS + HELD_OUT_SCENARIOS
+    final_scenarios = eval_scenarios + HELD_OUT_SCENARIOS
     final = {name: eval_policy(make, args.regime, args.horizon,
                                args.decision_interval, seeds,
                                robot_factory=robot_factory,
@@ -255,6 +269,9 @@ def main() -> None:
         "elapsed_seconds": time.time() - start_time,
         "best_eval_cost": best_cost,
         "robots": args.robots,
+        "episode_mix": {"honest_prob": args.honest_prob,
+                        "adaptive_prob": args.adaptive_prob,
+                        "note": "rule v3.3: main experiment = honest + betrayal"},
         "checkpoints": {
             "honest": str(args.honest_checkpoint),
             "cheater": str(args.cheater_checkpoint),
