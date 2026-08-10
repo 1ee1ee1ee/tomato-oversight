@@ -6,6 +6,7 @@
 |---|---|---|
 | `honest_v13_best.pt` | `honest_v13` 학습 결과 (Drive `result_honest_v13/<run>/`) | **life** |
 | `cheater_v1_best.pt` | `cheater_v1` 학습 결과 (Drive `result_cheater_v1/<run>/`) | moisture |
+| `honest_v13_best.pt` | v13 zip run1 (사후 태그 각인: obs_semantics=life, 가중치 불변) | **life** |
 
 Colab에서 복사하는 예:
 

@@ -367,6 +367,13 @@ class ModelPolicy:
     ``honest_slice=True`` feeds the agent the 20-value honest observation
     (obs[:20]) and masks O; the cheater uses the full 21-value observation with
     O enabled.  Deployment epsilon defaults to 0.10 (rule v3.1).
+
+    WARNING: ``honest_slice=True`` performs NO meaning conversion — the world
+    emits MOISTURE in the per-tomato slots, so this wrapper is only correct
+    for moisture-trained honest models (v11/v12).  honest_v13+ observe LIFE:
+    use ``robots.HonestModelPolicy`` / ``robots.Phase2RobotFactory``, which
+    convert and check the checkpoint's ``obs_semantics`` tag.  A mismatch
+    raises nothing and silently degrades the policy.
     """
 
     def __init__(self, agent, *, honest_slice: bool, epsilon: float = 0.10) -> None:
