@@ -78,7 +78,7 @@ def measure(make_policy, regime, robot_factory, seeds, horizon, interval) -> dic
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--regime", type=int, choices=(1, 2), required=True)
+    parser.add_argument("--regime", type=int, choices=(0, 1, 2, 3, 4), required=True)
     parser.add_argument("--model", type=Path, action="append", default=[],
                         help="trained checkpoint(s); repeat for multiple seeds")
     parser.add_argument("--periods", type=str, default="100,250,500,1000,2000",

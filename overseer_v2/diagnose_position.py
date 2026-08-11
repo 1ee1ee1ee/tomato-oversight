@@ -47,9 +47,15 @@ CHEATER_SCENARIOS = [
     ("adaptive_f0.9", dict(force_episode="adaptive", fixed_cheat_fraction=0.9)),
 ]
 
-# Regime-2 layout: obs = meta[5] + audit_block[16] + behaviour[9]; behaviour[0:2]
-# are the normalised (x, y) robot position -> obs indices 21, 22 (see env._build_obs).
-POSITION_INDICES = (21, 22)
+# Where the normalised (x, y) robot position lands in each regime's obs vector
+# (see env._build_obs): regime 2 puts behaviour right after A(21); regimes 3/4
+# put it after A(21)+apparent(5)=26.  Regimes 0/1 carry no position feature.
+def position_indices(regime: int) -> tuple[int, ...] | None:
+    if regime == 2:
+        return (21, 22)
+    if regime in (3, 4):
+        return (26, 27)
+    return None
 
 
 class GreedyOverseer:
@@ -57,7 +63,7 @@ class GreedyOverseer:
 
     def __init__(self, agent, *, ablate_position: bool = False,
                  ablate_value: float = 0.5,
-                 position_indices: tuple[int, ...] = POSITION_INDICES) -> None:
+                 position_indices: tuple[int, ...] = (21, 22)) -> None:
         self.agent = agent
         self.ablate_position = ablate_position
         self.ablate_value = ablate_value
@@ -111,7 +117,7 @@ def _parse_xy(text: str) -> tuple[int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--regime", type=int, choices=(1, 2), required=True)
+    parser.add_argument("--regime", type=int, choices=(0, 1, 2, 3, 4), required=True)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--o-train", type=_parse_xy, default=(1, 1),
                         help="O location the model trained on (default 1,1)")
@@ -148,14 +154,16 @@ def main() -> None:
     _row(f"O@{args.o_transfer} (transfer)", trans)
 
     d_cost = trans["mean_cost"] - base["mean_cost"]
-    tag = ("HOLDS -> general pattern" if args.regime == 2
+    tag = ("HOLDS -> general pattern" if position_indices(args.regime) is not None
            else "should be ~0 (position-blind control)")
     print(f"\nO-transfer  Δcost = {d_cost:+.2f}   "
           f"[{_verdict(d_cost, base['mean_cost'], tag, 'MOVES -> location reliance')}]" )
 
-    if args.regime == 2:
+    pos_idx = position_indices(args.regime)
+    if pos_idx is not None:
         abl = measure(lambda: GreedyOverseer(agent, ablate_position=True,
-                                             ablate_value=args.ablate_value),
+                                             ablate_value=args.ablate_value,
+                                             position_indices=pos_idx),
                       args.regime, factory, seeds, args.o_train,
                       args.horizon, args.decision_interval)
         _row("position-ablated (train O)", abl)

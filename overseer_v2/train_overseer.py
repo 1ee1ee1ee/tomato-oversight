@@ -127,7 +127,7 @@ def eval_policy(make_policy, regime: int, horizon: int, interval: int, seeds,
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--regime", type=int, choices=(1, 2), required=True)
+    parser.add_argument("--regime", type=int, choices=(0, 1, 2, 3, 4), required=True)
     parser.add_argument("--total-steps", type=int, default=150_000)
     parser.add_argument("--horizon", type=int, default=10_000)
     parser.add_argument("--decision-interval", type=int, default=100)
