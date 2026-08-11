@@ -276,12 +276,16 @@ def main() -> None:
             recent_caught, recent_cheater = [], []
             # Written every evaluation so a Drive output dir shows live progress.
             _write_csv(args.output_dir / "periodic_evaluation.csv", periodic_rows)
-            agent.save(last_path, metadata={"step": step})
+            agent.save(last_path, metadata={"step": step, "regime": args.regime})
             if metrics["mean_cost"] < best_cost:
                 best_cost = metrics["mean_cost"]
-                agent.save(best_path, metadata={"step": step, "eval": metrics})
+                # The regime is recorded so the eval tools can refuse a
+                # mismatch; every regime shares one obs length, so nothing else
+                # would catch it (see env.check_checkpoint_regime).
+                agent.save(best_path, metadata={"step": step, "regime": args.regime,
+                                                "eval": metrics})
 
-    agent.save(last_path, metadata={"step": args.total_steps})
+    agent.save(last_path, metadata={"step": args.total_steps, "regime": args.regime})
 
     # ---- Final comparison: trained (best) vs the control group ----
     # Periodic N sweep = the rule's 대조군 (촘촘~성김); held-out betrayal

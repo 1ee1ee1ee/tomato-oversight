@@ -162,6 +162,34 @@ def live_labels(regime: int) -> list[str]:
     return [name for name, live in zip(OBS_LABELS, regime_mask(regime)) if live]
 
 
+def check_checkpoint_regime(observation_size: int, metadata: dict, regime: int, path) -> None:
+    """Refuse a checkpoint that was not trained on this regime.
+
+    This guard exists *because* of the unified layout.  In v2 the regimes had
+    different observation lengths (21 vs 30), so using the wrong one blew up as
+    a shape error.  In v3 every regime emits the same 36-dim vector, so a
+    regime-0 checkpoint loads happily into a regime-4 evaluation and silently
+    produces nonsense: the newly-live columns get multiplied by weights that are
+    still frozen at their random initialisation, because a masked input receives
+    exactly zero gradient and never trains.  Nothing downstream would notice.
+    """
+    if observation_size != OBS_SIZE:
+        raise SystemExit(
+            f"{path}: checkpoint expects {observation_size}-dim observations, but "
+            f"overseer_v3 emits {OBS_SIZE}. v2 checkpoints (21/30-dim) are not "
+            "compatible with the v3 unified layout - retrain with train_overseer.py.")
+    trained_on = metadata.get("regime")
+    if trained_on is None:
+        print(f"WARNING {path}: checkpoint does not record its regime (pre-guard "
+              f"file). Assuming it was trained on regime {regime} - verify by hand.")
+    elif int(trained_on) != int(regime):
+        raise SystemExit(
+            f"{path}: trained on regime {trained_on}, but this run asks for regime "
+            f"{regime}. Every regime shares the 36-dim layout, so this would NOT "
+            "fail on shape - it would quietly score a model against inputs whose "
+            "weights never left initialisation.")
+
+
 class OverseerAction(IntEnum):
     CONTINUE = 0
     AUDIT = 1

@@ -35,7 +35,13 @@ import numpy as np
 
 from src.baselines import run_episode
 from src.ddqn import DoubleDQNAgent
-from src.env import OBS_BLOCKS, OBS_SIZE, OverseerConfig, OverseerEnv, regime_mask
+from src.env import (
+    OBS_BLOCKS,
+    OverseerConfig,
+    OverseerEnv,
+    check_checkpoint_regime,
+    regime_mask,
+)
 
 ACTION_MASK = np.ones(2, dtype=bool)
 
@@ -58,17 +64,6 @@ def sees_position(regime: int) -> bool:
     return bool(regime_mask(regime)[_BEHAV_LOW])
 
 
-def require_v3_checkpoint(agent, path) -> None:
-    """v2 checkpoints are 21/30-dim; v3 emits one 36-dim vector for every regime.
-
-    Without this the mismatch surfaces as an opaque torch matmul shape error on
-    the first forward pass.
-    """
-    if agent.observation_size != OBS_SIZE:
-        raise SystemExit(
-            f"{path}: checkpoint expects {agent.observation_size}-dim observations, "
-            f"but overseer_v3 emits {OBS_SIZE}. v2 checkpoints are not compatible "
-            "with the v3 unified layout - retrain with train_overseer.py.")
 
 
 class GreedyOverseer:
@@ -152,8 +147,9 @@ def main() -> None:
         Path("../scheduler_v2/models/cheater_v1_best.pt"),
         device="cpu", adaptive_honest_checkpoint=args.adaptive_honest_checkpoint)
 
-    agent, _ = DoubleDQNAgent.load(str(args.model), args.device, 0)
-    require_v3_checkpoint(agent, args.model)
+    agent, checkpoint_meta = DoubleDQNAgent.load(str(args.model), args.device, 0)
+    check_checkpoint_regime(agent.observation_size, checkpoint_meta,
+                            args.regime, args.model)
     seeds = list(range(70_000, 70_000 + args.seeds))
 
     print(f"regime {args.regime}  |  model {args.model}")

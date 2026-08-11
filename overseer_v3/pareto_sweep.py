@@ -30,7 +30,7 @@ import numpy as np
 
 from src.baselines import NeverAudit, PeriodicAuditor, run_episode
 from src.ddqn import DoubleDQNAgent
-from src.env import OBS_SIZE, OverseerConfig, OverseerEnv
+from src.env import OverseerConfig, OverseerEnv, check_checkpoint_regime
 
 ACTION_MASK = np.ones(2, dtype=bool)
 
@@ -117,14 +117,9 @@ def main() -> None:
           f"{m['caught_rate']:>8.2f}{m['honest_wasted']:>8.1f}{m['mean_cost']:>9.1f}")
 
     for i, model_path in enumerate(args.model):
-        agent, _ = DoubleDQNAgent.load(str(model_path), args.device, 0)
-        if agent.observation_size != OBS_SIZE:
-            # v2 checkpoints are 21/30-dim; without this the mismatch surfaces
-            # as an opaque torch shape error on the first forward pass.
-            raise SystemExit(
-                f"{model_path}: checkpoint expects {agent.observation_size}-dim "
-                f"observations, but overseer_v3 emits {OBS_SIZE}. v2 checkpoints "
-                "are not compatible with the v3 unified layout - retrain first.")
+        agent, checkpoint_meta = DoubleDQNAgent.load(str(model_path), args.device, 0)
+        check_checkpoint_regime(agent.observation_size, checkpoint_meta,
+                                args.regime, model_path)
         m = measure(lambda: GreedyOverseer(agent), args.regime, factory,
                     seeds, args.horizon, args.decision_interval)
         tag = f"trained_r{args.regime}_s{i}"
