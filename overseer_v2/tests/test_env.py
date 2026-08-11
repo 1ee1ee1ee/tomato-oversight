@@ -18,7 +18,7 @@ FAST = dict(decision_interval=100, horizon=3_000)   # room for lies to appear/ca
 
 class ObservationTests(unittest.TestCase):
     def test_regime_shapes_and_bounds(self) -> None:
-        for regime, size in ((1, 21), (2, 30)):
+        for regime, size in ((0, 21), (1, 26), (2, 30), (3, 33), (4, 35)):
             env = OverseerEnv(OverseerConfig(regime=regime, **FAST))
             obs, _ = env.reset(seed=0)
             self.assertEqual(env.observation_space.shape, (size,))
@@ -28,6 +28,21 @@ class ObservationTests(unittest.TestCase):
                 self.assertTrue(np.all(obs >= -1e-6) and np.all(obs <= 1 + 1e-6))
                 if term or trunc:
                     break
+
+    def test_regime_ladder_is_a_prefix_nesting(self) -> None:
+        # 0->1->3->4 is a strict prefix ladder: for the SAME world state each
+        # regime's obs is the leading slice of the next (blocks A, +B, +C, +D).
+        obs = {}
+        for regime in (0, 1, 3, 4):
+            env = OverseerEnv(OverseerConfig(regime=regime, force_episode="adaptive",
+                                             fixed_cheat_fraction=0.6, **FAST))
+            obs[regime], _ = env.reset(seed=3)
+        self.assertTrue(np.allclose(obs[0], obs[1][:21]))    # A
+        self.assertTrue(np.allclose(obs[1], obs[3][:26]))    # A+B
+        self.assertTrue(np.allclose(obs[3], obs[4][:33]))    # A+B+C
+        # Regime 2 keeps behaviour+watering but NO apparent log, so it is NOT a
+        # prefix of the expert (regime 4) — the treatment ablation.
+        self.assertEqual(obs[4].shape, (35,))
 
     def test_true_state_not_leaked_between_audits(self) -> None:
         # The audit-log slice of the observation must stay frozen while the

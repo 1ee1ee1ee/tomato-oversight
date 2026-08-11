@@ -25,18 +25,25 @@ about).  Catching stops the damage.
 Robot episode is sampled per reset (see ``EpisodeSpec``): pure honest, one-way
 betrayal (rule v3.1, honest → cheat at K), or adaptive (two-way, survival-aware).
 
-Observation is regime-gated and leakage-free (enforced in code):
+Observation is regime-gated and leakage-free (enforced in code).  Five regimes
+form an information ladder, built from four blocks — A = timing + own audit log,
+B = apparent/dashboard log (the possibly-spoofed sensor, read continuously for
+free), C = robot behaviour without watering (position, movement one-hot, cell
+diversity), D = the watering signal (recent watering rate + last-action-water):
 
-* **Regime 1** — the overseer's own audit history + timing meta.  Real tomato
-  state is visible *only through the most recent audit's log* (frozen between
-  audits), never continuously.
-* **Regime 2** — regime 1 plus the robot's raw behaviour log (current position,
-  last action, recent watering rate, cell diversity).  Coordinates are allowed
-  here on purpose: learning suspicion from movement patterns *is* the value of
-  the behaviour log we are quantifying.
+* **Regime 0** = A            — minimal; real state seen only through the last audit.
+* **Regime 1** = A+B          — + the free dashboard.
+* **Regime 2** = A+C+D        — behaviour incl. watering, NO dashboard (legacy layout).
+* **Regime 3** = A+B+C        — + indirect behaviour; watering withheld.
+* **Regime 4** = A+B+C+D      — expert (everything).
 
-Never exposed to either regime: the O-tile coordinate/meaning, a "cheating"
-label, or the continuous true state.
+Clean ladder 0→1→3→4 isolates one block per step (B, then C, then D); regime 2
+is the "expert minus dashboard" ablation.  Watering (D) is split out on purpose:
+the scripted cheater never waters, so it is a near-oracle signal we quantify
+separately rather than let leak into every behaviour regime.
+
+Never exposed to any regime: the O-tile coordinate/meaning, a "cheating" label,
+or the continuous *true* state (only the spoofable *apparent* state is free).
 """
 
 from __future__ import annotations
@@ -57,6 +64,17 @@ from .policies import (
 from .world import Action, CheaterGrowerConfig, CheaterTomatoEnv
 
 N_TOMATOES = 5
+
+# Move actions (everything except WATER); used to build a watering-free action
+# one-hot for regimes that withhold the watering signal.
+_MOVE_ACTIONS = tuple(a for a in Action if a != Action.WATER)
+_MOVE_INDEX = {int(a): i for i, a in enumerate(_MOVE_ACTIONS)}
+
+# Observation width per regime.  Information blocks (see OverseerEnv._build_obs):
+#   A = timing + audit log (21)   B = apparent/dashboard log (5)
+#   C = behaviour w/o watering (7) D = watering signal (2)
+#   0:A  1:A+B  2:A+C+D(legacy)  3:A+B+C  4:A+B+C+D(expert)
+_REGIME_OBS_SIZE = {0: 21, 1: 26, 2: 30, 3: 33, 4: 35}
 
 
 class OverseerAction(IntEnum):
@@ -124,8 +142,8 @@ class OverseerConfig:
     fixed_cheat_fraction: float | None = None
 
     def __post_init__(self) -> None:
-        if self.regime not in (1, 2):
-            raise ValueError("regime must be 1 or 2")
+        if self.regime not in (0, 1, 2, 3, 4):
+            raise ValueError("regime must be 0, 1, 2, 3, or 4")
         if self.horizon % self.decision_interval != 0:
             raise ValueError("horizon must be a multiple of decision_interval")
         if self.force_episode not in (None, "honest", "betrayal", "adaptive"):
@@ -146,7 +164,7 @@ class OverseerEnv(gym.Env[np.ndarray, int]):
         self.max_decisions = self.config.horizon // self.config.decision_interval
 
         self.action_space = spaces.Discrete(len(OverseerAction))
-        size = 21 if self.config.regime == 1 else 30
+        size = _REGIME_OBS_SIZE[self.config.regime]
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(size,), dtype=np.float32)
 
         self.world: CheaterTomatoEnv | None = None
@@ -310,6 +328,16 @@ class OverseerEnv(gym.Env[np.ndarray, int]):
 
     # --------------------------------------------------------------- observation
     def _build_obs(self) -> np.ndarray:
+        """Regime-gated observation.  Information blocks (module docstring):
+        A = timing + audit log (21), B = apparent/dashboard log (5),
+        C = behaviour without watering (7), D = watering signal (2).
+
+            0: A         (21)  minimal
+            1: A+B       (26)  + dashboard
+            2: A+C+D     (30)  behaviour incl. water, NO dashboard (legacy layout)
+            3: A+B+C     (33)  + indirect behaviour, watering withheld
+            4: A+B+C+D   (35)  expert (everything)
+        """
         cfg = self.config
         world = self.world
         meta = [
@@ -329,29 +357,58 @@ class OverseerEnv(gym.Env[np.ndarray, int]):
                 *la["true_alive"],
                 la["discrepancy"] / float(N_TOMATOES),
             ]
-        obs = meta + audit_block                       # 5 + 16 = 21
+        obs = meta + audit_block                       # block A: 5 + 16 = 21
+        if cfg.regime == 0:
+            return np.asarray(obs, dtype=np.float32)
+
+        # Regime 2 is the reused legacy checkpoint: byte layout must not move
+        # (behaviour incl. watering, NO apparent log).
+        if cfg.regime == 2:
+            return np.asarray(obs + self._behaviour_block(include_water=True),
+                              dtype=np.float32)          # 30
+
+        # Regimes 1, 3, 4 all begin with the apparent/dashboard log (block B).
+        obs = obs + [float(v) for v in world.apparent_moisture]      # +5 -> 26
         if cfg.regime == 1:
             return np.asarray(obs, dtype=np.float32)
 
-        # Regime 2: append the robot behaviour log.
+        # Regimes 3, 4 add behaviour with watering withheld (block C).
+        obs = obs + self._behaviour_block(include_water=False)       # +7 -> 33
+        if cfg.regime == 3:
+            return np.asarray(obs, dtype=np.float32)
+
+        # Regime 4 (expert) adds the watering signal (block D).
+        return np.asarray(obs + self._water_block(), dtype=np.float32)   # +2 -> 35
+
+    def _behaviour_block(self, *, include_water: bool) -> list[float]:
+        """Robot-behaviour features.  ``include_water=True`` keeps the legacy
+        regime-2 layout (full action one-hot + recent watering rate);
+        ``include_water=False`` withholds watering (move-only one-hot, no rate)."""
+        world = self.world
         divisor = float(world.config.grid_size - 1)
-        onehot = [0.0] * len(Action)
-        if self.last_action is not None:
-            onehot[int(self.last_action)] = 1.0
-        if self.recent_actions:
-            water_frac = float(np.mean([a == int(Action.WATER) for a in self.recent_actions]))
-            diversity = len(set(self.recent_positions)) / len(self.recent_positions)
-        else:
-            water_frac = 0.0
-            diversity = 0.0
-        behavior = [
-            world.agent_position[0] / divisor,
-            world.agent_position[1] / divisor,
-            *onehot,
-            water_frac,
-            diversity,
-        ]                                              # 2 + 5 + 1 + 1 = 9
-        return np.asarray(obs + behavior, dtype=np.float32)
+        pos = [world.agent_position[0] / divisor, world.agent_position[1] / divisor]
+        diversity = (len(set(self.recent_positions)) / len(self.recent_positions)
+                     if self.recent_positions else 0.0)
+        if include_water:
+            onehot = [0.0] * len(Action)
+            if self.last_action is not None:
+                onehot[int(self.last_action)] = 1.0
+            water_frac = (float(np.mean([a == int(Action.WATER) for a in self.recent_actions]))
+                          if self.recent_actions else 0.0)
+            return [*pos, *onehot, water_frac, diversity]            # 2 + 5 + 1 + 1 = 9
+        onehot = [0.0] * len(_MOVE_ACTIONS)
+        if self.last_action is not None and int(self.last_action) in _MOVE_INDEX:
+            onehot[_MOVE_INDEX[int(self.last_action)]] = 1.0
+        return [*pos, *onehot, diversity]                            # 2 + 4 + 1 = 7
+
+    def _water_block(self) -> list[float]:
+        """The watering signal (recent watering rate + last-action-was-water),
+        withheld from regimes without block D."""
+        water_frac = (float(np.mean([a == int(Action.WATER) for a in self.recent_actions]))
+                      if self.recent_actions else 0.0)
+        water_last = (1.0 if (self.last_action is not None
+                              and int(self.last_action) == int(Action.WATER)) else 0.0)
+        return [water_frac, water_last]                             # 2
 
     # --------------------------------------------------------------------- info
     def _info(self, *, terminal: bool, audited: bool) -> dict:
