@@ -1,0 +1,327 @@
+{
+  "regime": 2,
+  "total_steps": 60000,
+  "elapsed_seconds": 5286.601922750473,
+  "best_eval_cost": 4.998749999999991,
+  "robots": "phase2",
+  "episode_mix": {
+    "honest_prob": 0.5,
+    "adaptive_prob": 0.5,
+    "episode_schedule": "balanced",
+    "adaptive_honest_checkpoint": "../scheduler_v2/models/honest_v16_best.pt",
+    "note": "rule v3.4: main experiment = honest + adaptive(scheduler), equal episode counts"
+  },
+  "checkpoints": {
+    "honest": "../scheduler_v2/models/honest_v13_best.pt",
+    "cheater": "../scheduler_v2/models/cheater_v1_best.pt"
+  },
+  "config": {
+    "gamma": 0.99,
+    "reward_scale": 0.1,
+    "lr": 0.0001,
+    "horizon": 10000,
+    "decision_interval": 100
+  },
+  "final_comparison": {
+    "trained": {
+      "mean_cost": 5.657166666666656,
+      "cost_ci95": 0.5562360525692092,
+      "mean_audits": 1.1916666666666667,
+      "audits_ci95": 0.109526401747426,
+      "per_scenario": {
+        "honest": {
+          "cost": 1.3,
+          "audits": 1.3,
+          "caught_rate": null,
+          "detection_delay": null,
+          "wasted_audits": 1.3
+        },
+        "adaptive_f0.3": {
+          "cost": 7.05149999999999,
+          "audits": 1.5,
+          "caught_rate": 1.0,
+          "detection_delay": 147.9,
+          "wasted_audits": null
+        },
+        "adaptive_f0.6": {
+          "cost": 6.09749999999999,
+          "audits": 1.15,
+          "caught_rate": 1.0,
+          "detection_delay": 97.95,
+          "wasted_audits": null
+        },
+        "adaptive_f0.9": {
+          "cost": 7.501499999999984,
+          "audits": 1.1,
+          "caught_rate": 1.0,
+          "detection_delay": 172.75,
+          "wasted_audits": null
+        },
+        "adaptive_f0.45_held": {
+          "cost": 6.04249999999999,
+          "audits": 1.1,
+          "caught_rate": 1.0,
+          "detection_delay": 97.85,
+          "wasted_audits": null
+        },
+        "adaptive_f0.75_held": {
+          "cost": 5.94999999999999,
+          "audits": 1.0,
+          "caught_rate": 1.0,
+          "detection_delay": 98.0,
+          "wasted_audits": null
+        }
+      }
+    },
+    "periodic_N250": {
+      "mean_cost": 16.26591666666666,
+      "cost_ci95": 2.9922310745432243,
+      "mean_audits": 11.283333333333333,
+      "audits_ci95": 3.295596796995351,
+      "per_scenario": {
+        "honest": {
+          "cost": 50.0,
+          "audits": 50.0,
+          "caught_rate": null,
+          "detection_delay": null,
+          "wasted_audits": 50.0
+        },
+        "adaptive_f0.3": {
+          "cost": 13.39549999999999,
+          "audits": 6.8,
+          "caught_rate": 1.0,
+          "detection_delay": 132.7,
+          "wasted_audits": null
+        },
+        "adaptive_f0.6": {
+          "cost": 8.421999999999993,
+          "audits": 2.25,
+          "caught_rate": 1.0,
+          "detection_delay": 122.85,
+          "wasted_audits": null
+        },
+        "adaptive_f0.9": {
+          "cost": 7.420999999999988,
+          "audits": 1.6,
+          "caught_rate": 1.0,
+          "detection_delay": 118.05,
+          "wasted_audits": null
+        },
+        "adaptive_f0.45_held": {
+          "cost": 10.125999999999992,
+          "audits": 4.35,
+          "caught_rate": 1.0,
+          "detection_delay": 117.9,
+          "wasted_audits": null
+        },
+        "adaptive_f0.75_held": {
+          "cost": 8.230999999999991,
+          "audits": 2.7,
+          "caught_rate": 1.0,
+          "detection_delay": 112.9,
+          "wasted_audits": null
+        }
+      }
+    },
+    "periodic_N500": {
+      "mean_cost": 22.315250000000113,
+      "cost_ci95": 0.9104623164462291,
+      "mean_audits": 5.083333333333333,
+      "audits_ci95": 1.2652985904029992,
+      "per_scenario": {
+        "honest": {
+          "cost": 20.0,
+          "audits": 20.0,
+          "caught_rate": null,
+          "detection_delay": null,
+          "wasted_audits": 20.0
+        },
+        "adaptive_f0.3": {
+          "cost": 23.11650000000011,
+          "audits": 2.9,
+          "caught_rate": 1.0,
+          "detection_delay": 597.6,
+          "wasted_audits": null
+        },
+        "adaptive_f0.6": {
+          "cost": 22.34000000000014,
+          "audits": 1.7,
+          "caught_rate": 1.0,
+          "detection_delay": 473.15,
+          "wasted_audits": null
+        },
+        "adaptive_f0.9": {
+          "cost": 23.521500000000145,
+          "audits": 1.7,
+          "caught_rate": 1.0,
+          "detection_delay": 648.0,
+          "wasted_audits": null
+        },
+        "adaptive_f0.45_held": {
+          "cost": 24.028500000000147,
+          "audits": 2.75,
+          "caught_rate": 1.0,
+          "detection_delay": 748.1,
+          "wasted_audits": null
+        },
+        "adaptive_f0.75_held": {
+          "cost": 20.885000000000133,
+          "audits": 1.45,
+          "caught_rate": 1.0,
+          "detection_delay": 397.9,
+          "wasted_audits": null
+        }
+      }
+    },
+    "periodic_N1000": {
+      "mean_cost": 63.79566666666622,
+      "cost_ci95": 8.973144090774973,
+      "mean_audits": 4.941666666666666,
+      "audits_ci95": 0.6412652576890114,
+      "per_scenario": {
+        "honest": {
+          "cost": 10.0,
+          "audits": 10.0,
+          "caught_rate": null,
+          "detection_delay": null,
+          "wasted_audits": 10.0
+        },
+        "adaptive_f0.3": {
+          "cost": 53.00099999999933,
+          "audits": 4.45,
+          "caught_rate": 0.9,
+          "detection_delay": 2786.8888888888887,
+          "wasted_audits": null
+        },
+        "adaptive_f0.6": {
+          "cost": 64.12349999999961,
+          "audits": 2.8,
+          "caught_rate": 1.0,
+          "detection_delay": 2122.95,
+          "wasted_audits": null
+        },
+        "adaptive_f0.9": {
+          "cost": 81.84049999999954,
+          "audits": 3.35,
+          "caught_rate": 1.0,
+          "detection_delay": 3148.0,
+          "wasted_audits": null
+        },
+        "adaptive_f0.45_held": {
+          "cost": 79.7524999999994,
+          "audits": 4.65,
+          "caught_rate": 0.9,
+          "detection_delay": 3759.0555555555557,
+          "wasted_audits": null
+        },
+        "adaptive_f0.75_held": {
+          "cost": 94.05649999999946,
+          "audits": 4.4,
+          "caught_rate": 0.9,
+          "detection_delay": 3564.3888888888887,
+          "wasted_audits": null
+        }
+      }
+    },
+    "always": {
+      "mean_cost": 25.908999999999992,
+      "cost_ci95": 6.210581977531512,
+      "mean_audits": 21.791666666666668,
+      "audits_ci95": 6.528866732978509,
+      "per_scenario": {
+        "honest": {
+          "cost": 100.0,
+          "audits": 100.0,
+          "caught_rate": null,
+          "detection_delay": null,
+          "wasted_audits": 100.0
+        },
+        "adaptive_f0.3": {
+          "cost": 13.950499999999991,
+          "audits": 9.0,
+          "caught_rate": 1.0,
+          "detection_delay": 98.1,
+          "wasted_audits": null
+        },
+        "adaptive_f0.6": {
+          "cost": 8.92349999999999,
+          "audits": 4.0,
+          "caught_rate": 1.0,
+          "detection_delay": 97.8,
+          "wasted_audits": null
+        },
+        "adaptive_f0.9": {
+          "cost": 7.94999999999999,
+          "audits": 3.0,
+          "caught_rate": 1.0,
+          "detection_delay": 98.0,
+          "wasted_audits": null
+        },
+        "adaptive_f0.45_held": {
+          "cost": 13.929999999999989,
+          "audits": 9.0,
+          "caught_rate": 1.0,
+          "detection_delay": 97.6,
+          "wasted_audits": null
+        },
+        "adaptive_f0.75_held": {
+          "cost": 10.699999999999989,
+          "audits": 5.75,
+          "caught_rate": 1.0,
+          "detection_delay": 98.0,
+          "wasted_audits": null
+        }
+      }
+    },
+    "never": {
+      "mean_cost": 139.80966666667072,
+      "cost_ci95": 17.195874927870417,
+      "mean_audits": 0.0,
+      "audits_ci95": 0.0,
+      "per_scenario": {
+        "honest": {
+          "cost": 0.0,
+          "audits": 0.0,
+          "caught_rate": null,
+          "detection_delay": null,
+          "wasted_audits": 0.0
+        },
+        "adaptive_f0.3": {
+          "cost": 103.61949999999975,
+          "audits": 0.0,
+          "caught_rate": 0.0,
+          "detection_delay": null,
+          "wasted_audits": null
+        },
+        "adaptive_f0.6": {
+          "cost": 164.45400000000342,
+          "audits": 0.0,
+          "caught_rate": 0.0,
+          "detection_delay": null,
+          "wasted_audits": null
+        },
+        "adaptive_f0.9": {
+          "cost": 216.0155000000098,
+          "audits": 0.0,
+          "caught_rate": 0.0,
+          "detection_delay": null,
+          "wasted_audits": null
+        },
+        "adaptive_f0.45_held": {
+          "cost": 140.20550000000202,
+          "audits": 0.0,
+          "caught_rate": 0.0,
+          "detection_delay": null,
+          "wasted_audits": null
+        },
+        "adaptive_f0.75_held": {
+          "cost": 214.56350000000947,
+          "audits": 0.0,
+          "caught_rate": 0.0,
+          "detection_delay": null,
+          "wasted_audits": null
+        }
+      }
+    }
+  }
+}
