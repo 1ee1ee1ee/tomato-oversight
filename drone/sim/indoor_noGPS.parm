@@ -21,8 +21,8 @@ SIM_FLOW_ENABLE  1
 SIM_SONAR_SCALE  10
 FLOW_TYPE        10    # SITL
 RNGFND1_TYPE     100   # SITL
-RNGFND1_MIN_CM   5
-RNGFND1_MAX_CM   400
+RNGFND1_MIN_CM   5     # 4.6 이상에서는 RNGFND1_MIN (미터)로 이름이 바뀌었다
+RNGFND1_MAX_CM   400   # 4.6 이상에서는 RNGFND1_MAX (미터)
 RNGFND1_ORIENT   25    # 하방
 
 # --- 실내 비행 특성 ---

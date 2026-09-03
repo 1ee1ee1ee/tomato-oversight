@@ -80,8 +80,12 @@ Guard가 막는 것:
 
 | 방식 | 부품 | 가격 | 난이도 |
 |---|---|---|---|
-| **옵티컬 플로우 + 하방 거리계** | Matek 3901-L0X | **5~7만원** | 낮음 — ArduPilot이 기본 지원 |
+| **옵티컬 플로우 + 하방 거리계** | MicoAir MTF-02P | **약 3.2만원** ($22.90) | 낮음 — ArduPilot이 기본 지원 |
+| 같은 방식, 저조도 대응 | Holybro H-Flow | 약 24만원 (€154.95) | 낮음 (CAN 연결) |
 | VIO / SLAM | RealSense T265(단종) 또는 자체 구현 | 50만원+ | 연구 과제 |
+
+> **Matek 3901-L0X는 단종(EOL)됐다.** ArduPilot 지원 목록에서도 빠졌다.
+> 후속으로는 MicoAir MTF-02P를 쓴다 — 더 싸고, 측정 범위가 2m에서 6m로 늘었다.
 
 **옵티컬 플로우로 가세요.** 마우스 센서와 같은 원리로 바닥 움직임을 읽는
 3g짜리 부품 하나가 실내 자율의 문턱을 넘겨줍니다. ArduPilot EKF3가 이걸
@@ -94,14 +98,16 @@ Guard가 막는 것:
 
 - 단색 장판·흰 타일 위: 무늬가 없어 추적 실패 → **바닥에 신문지나 매트를 깔 것**
 - 조도 부족: 실내등을 다 켤 것
-- 3901-L0X의 ToF는 **2m가 한계** → 순항 고도를 1.3m로 잡은 이유. 천장이 높은
-  공간이면 TFmini-S(12m)를 따로 달 것
+- MTF-02P의 ToF는 6m까지 닿는다(구형 3901-L0X는 2m였다). 일반적인 방 천장
+  높이에서는 여유가 충분하므로 하방 거리계를 따로 달 필요가 없다. 순항 고도
+  1.3m·상한 2.0m는 센서 한계가 아니라 **방 크기에 맞춘 값**이다 — 체육관처럼
+  천장이 높은 공간이면 `config.py`에서 올려도 된다
 
 `Guard`가 `flow_quality < 50`에서 즉시 HOLD를 거는 것이 이 실패에 대한 방어다.
 
 ---
 
-## 부품표 (실내용, 총 138~192만원)
+## 부품표 (실내용, 총 118~165만원)
 
 야외용 X500급 프레임을 실내에 들이면 안 된다. **프롭가드는 옵션이 아니라 필수.**
 
@@ -110,17 +116,16 @@ Guard가 막는 것:
 | 프레임 | 프롭가드 일체형 3~4인치 시네훕 (또는 250급 + 가드) | 6~12만 |
 | 모터·ESC | 1806~2004급 ×4 + 4in1 ESC 30A | 12~18만 |
 | 비행 컨트롤러 | Holybro Pixhawk 6C Mini (ArduPilot) | 25~30만 |
-| **옵티컬 플로우** | **Matek 3901-L0X (플로우+ToF 일체, 3g)** | **5~7만** |
-| 하방 거리계 | TFmini-S — 천장 높은 공간용 (선택) | 0~5만 |
-| **온보드 AI** | **Raspberry Pi 5 8GB + Hailo-8L (13 TOPS)** | 28~35만 |
-| 인식 카메라 | OAK-D Lite (스테레오 + 카메라 내 추론) | 20~25만 |
+| **옵티컬 플로우** | **MicoAir MTF-02P (플로우 + 6m ToF, 1g)** | **3~5만** |
+| **온보드 컴퓨터** | **Raspberry Pi 5 4GB** (NPU 불필요 — 아래 참조) | 13~18만 |
+| 인식 카메라 | OAK-D Lite (스테레오 + 카메라 내 1.4 TOPS 추론) | 20~25만 |
 | 측방 회피 | VL53L1X ToF ×2~3 | 3~5만 |
 | 조종기·수신기 | RadioMaster Pocket ELRS | 10~15만 |
 | 배터리 | 4S 1500mAh ×3 | 9~15만 |
 | 충전기 | ISDT Q6 / HOTA D6 + 세이프티백 | 8~12만 |
 | 전원 | **Pi 전용 5V 5A BEC** | 2~3만 |
 | 예비 부품 | 프롭, 가드, 암 | 5~10만 |
-| | **합계** | **138~192만** |
+| | **합계** | **118~165만** |
 
 ### 부품 선택 이유
 
@@ -128,8 +133,11 @@ Guard가 막는 것:
 바로 나온다. Pi의 CPU를 거의 안 쓰고, 스테레오 실측이라 단안처럼 거리를
 틀리지 않는다. 실내 온보드 자율에 가장 잘 맞는 선택.
 
-**Pi 5 + Hailo-8L** — Jetson Orin Nano Super는 2026년 7월 가격 인상으로
-$399가 되어 국내 70~85만원이다. 온보드 VLM을 돌릴 게 아니면 과하다.
+**호스트 NPU는 사지 말 것** — OAK-D Lite가 카메라 안에서 1.4 TOPS로 추론을
+끝내므로, 호스트에 Hailo-8L 같은 가속기를 또 다는 건 중복이다. Pi는 우리
+Python 루프와 MAVLink만 돌리면 되므로 4GB로 충분하다. 약 15만원과 55g을
+아낀다. 호스트에서 별도 모델(소형 VLM 등)을 돌리게 되면 그때 추가하면 된다.
+Jetson Orin Nano Super는 2026년 7월 인상으로 $399(국내 70~85만원)라 과하다.
 
 **Pi 전용 BEC** — 자작 드론 실패 원인 1위가 온보드 컴퓨터 브라운아웃이다.
 FC의 보조 5V 출력으로 Pi를 돌리면 언젠가 반드시 떨어진다.
@@ -149,15 +157,16 @@ FC의 보조 5V 출력으로 Pi를 돌리면 언젠가 반드시 떨어진다.
 
 ```
                     ┌─────────────────┐
-   OAK-D Lite ──USB─┤                 │
-                    │  Raspberry Pi 5 │
-   VL53L1X ×3 ──I2C─┤   + Hailo-8L    │
+  OAK-D Lite ──USB3─┤                 │
+                    │ Raspberry Pi 5  │
+   VL53L1X ×3 ──I2C─┤      4GB        │
                     └────────┬────────┘
-                             │ UART (Telem2, 921600)
+                             │ UART (TELEM2, 921600)
                              │ MAVLink2
                     ┌────────┴────────┐
-   Matek 3901-L0X ──┤  Pixhawk 6C Mini │── ESC ── 모터 ×4
-   (UART, MSP)      └─────────────────┘
+ MicoAir MTF-02P ───┤ Pixhawk 6C Mini │── 4in1 ESC ── 모터 ×4
+ (UART, MAVLink1,   └─────────────────┘
+  115200, SERIAL1)          │
                              │
                         5V 5A BEC ──→ Pi (별도 전원!)
 ```
@@ -191,18 +200,30 @@ EK2_ENABLE     0      EK3_SRC1_POSZ   2     # RangeFinder
                       EK3_SRC1_YAW    1     # Compass
 ```
 
-센서 타입 값(`FLOW_TYPE`, `RNGFND1_TYPE`, `SERIALx_PROTOCOL`)은 **펌웨어
-버전마다 enum이 달라지므로 여기 적힌 숫자를 믿지 말고 Mission Planner의
-드롭다운에서 고를 것.** Matek 3901-L0X는 MSP 프로토콜을 쓰므로 연결한
-시리얼 포트의 프로토콜을 MSP로, `FLOW_TYPE`과 `RNGFND1_TYPE`을 각각 MSP
-계열로 선택하면 된다.
+MicoAir MTF-02P를 SERIAL1에 연결했을 때의 값 (ArduPilot 공식 문서 기준):
+
+```
+SERIAL1_PROTOCOL  1      # MAVLink1 — MSP 아님
+SERIAL1_BAUD      115    # 115200
+SERIAL1_OPTIONS   1024   # 펌웨어 4.5.0 이상에서만
+FLOW_TYPE         5      # MAVLink
+RNGFND1_TYPE      10     # MAVLink
+RNGFND1_ORIENT    25     # 하방
+RNGFND1_MIN       0.01
+RNGFND1_MAX       8
+```
+
+`RNGFND1_MIN`/`MAX`는 **미터** 단위다. 구형 펌웨어에서는 `RNGFND1_MIN_CM`/
+`MAX_CM`(센티미터)였으므로, Mission Planner에 어느 쪽 이름이 보이는지 확인할 것.
+`SERIAL1`이 아닌 포트에 연결했다면 위 `SERIAL1_*`을 해당 번호로 바꾼다.
 
 ### 이륙 전 필수 확인
 
 1. **플로우 방향 검증** — 기체를 손에 들고 앞뒤로 움직이며 Mission Planner의
    `FLOW_QUALITY`가 150 이상 나오는지, `OPTICAL_FLOW` 값의 부호가 움직임
    방향과 맞는지 확인. 부호가 반대면 기체가 발산한다.
-2. **거리계 값** — 지면에서 1m 들었을 때 100cm 근처가 나오는지.
+2. **거리계 값** — 지면에서 1m 들었을 때 Mission Planner의 `sonarrange`가
+   1.0 근처를 가리키는지.
 3. **EKF 상태** — Mission Planner의 EKF 창에서 velocity/position variance가
    빨간색이 아닌지.
 
