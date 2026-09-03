@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 
 from .config import Mission
+from .mission_spec import Behavior, MissionSpec
 from .state import Action, Command, Detection, Perception, Phase, Telemetry
 
 
@@ -22,13 +23,23 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 
 
 class Policy:
+    #: COUNT 에서 같은 대상을 두 번 세지 않기 위한 반경(m).
+    DEDUP_RADIUS_M = 1.0
+
     def __init__(
         self,
         mission: Mission,
         cruise_alt_m: float | None = None,
         max_yaw_rate: float = 0.5,
+        spec: MissionSpec | None = None,
     ) -> None:
         self.m = mission
+        # spec 은 컴파일된 자연어 명령이다. 없으면 기본 임무로 동작한다.
+        self.spec = spec or MissionSpec()
+        #: COUNT 로 이미 센 대상들의 월드 좌표. 중복 계수를 막는다.
+        self.counted: list[tuple[float, float]] = []
+        #: PATROL 이 관측한 라벨들.
+        self.observed: list[str] = []
         self.cruise_alt_m = cruise_alt_m if cruise_alt_m is not None else mission.cruise_alt_m
         # Guard와 같은 한계를 알고 있어야 한다. 매 틱 잘려 나가는 명령을 내면
         # Guard 경고가 상시 켜지고, 그러면 진짜 경고를 아무도 못 본다.
@@ -109,6 +120,16 @@ class Policy:
         )
 
     def _search(self, telem: Telemetry, target, now: float) -> Command:
+        if target is not None and self.spec.behavior is Behavior.PATROL:
+            # 순찰은 다가가지 않는다. 보이는 것을 기록만 하고 계속 돈다.
+            if target.label not in self.observed:
+                self.observed.append(target.label)
+            target = None
+
+        if target is not None and self.spec.behavior is Behavior.COUNT:
+            if self._already_counted(telem, target):
+                target = None   # 방금 센 대상이다. 다음 것을 찾아 계속 회전한다.
+
         if target is not None:
             self._enter(Phase.APPROACH, now)
             return self._approach(telem, target, now)
@@ -142,6 +163,15 @@ class Policy:
 
         error = det.x_m - self.m.stop_distance_m
         if abs(error) <= self.m.approach_tolerance_m and abs(bearing) < 0.15:
+            if self.spec.behavior is Behavior.FOLLOW:
+                # 추종은 끝나지 않는다. 거리를 유지한 채 계속 따라간다.
+                # 종료는 배터리나 임무 제한 시간이 결정한다.
+                return Command(
+                    Action.HOLD,
+                    yaw_rate=yaw_rate,
+                    vz=self._alt_hold(telem),
+                    reason=f"추종 중 {det.x_m:.2f}m",
+                )
             self._enter(Phase.INSPECT, now)
             return Command(Action.HOLD, vz=self._alt_hold(telem), reason="정지 거리 도달")
 
@@ -159,6 +189,18 @@ class Policy:
 
     def _inspect(self, telem: Telemetry, target, now: float) -> Command:
         if self.phase_elapsed >= self.m.inspect_seconds:
+            if self.spec.behavior is Behavior.COUNT:
+                det = target or self._last_target
+                if det is not None:
+                    self.counted.append(self._target_world(telem, det))
+                if len(self.counted) < self.spec.stop_after_n:
+                    self._last_target = None
+                    self._target_seen_at = None
+                    self._enter(Phase.SEARCH, now)
+                    return Command(
+                        Action.HOLD,
+                        reason=f"{len(self.counted)}/{self.spec.stop_after_n} 계수 — 재탐색",
+                    )
             self._enter(Phase.RETURN, now)
             return self._return(telem, target, now)
         return Command(
@@ -199,6 +241,20 @@ class Policy:
         return Command(Action.HOLD, reason="임무 종료")
 
     # ------------------------------------------------------------------
+
+    def _target_world(self, telem: Telemetry, det: Detection) -> tuple[float, float]:
+        """기체 기준 검출 위치를 시작 지점 기준 월드 좌표로 옮긴다."""
+        c, s = math.cos(telem.yaw_rad), math.sin(telem.yaw_rad)
+        return (
+            telem.north_m + det.x_m * c - det.y_m * s,
+            telem.east_m + det.x_m * s + det.y_m * c,
+        )
+
+    def _already_counted(self, telem: Telemetry, det: Detection) -> bool:
+        n, e = self._target_world(telem, det)
+        return any(
+            math.hypot(n - cn, e - ce) < self.DEDUP_RADIUS_M for cn, ce in self.counted
+        )
 
     def _alt_hold(self, telem: Telemetry) -> float:
         """순항 고도를 유지하는 수직 속도. NED 규약이라 +가 하강이다."""
