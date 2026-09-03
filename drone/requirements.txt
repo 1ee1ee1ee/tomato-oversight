@@ -1,0 +1,8 @@
+# 시뮬레이션(--perception mock --link mock)은 표준 라이브러리만으로 돌아간다.
+# 아래는 실기체 / SITL 에 붙일 때만 필요하다.
+
+pymavlink>=2.4.42     # link=mavlink (SITL 및 실기체)
+# depthai>=2.28       # perception=oakd (OAK-D Lite)
+# onnxruntime>=1.18   # perception=onnx
+# numpy>=1.26         # perception=onnx
+# picamera2           # perception=onnx (Raspberry Pi OS 에 기본 포함)

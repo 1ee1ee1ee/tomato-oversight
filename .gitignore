@@ -25,3 +25,7 @@ Thumbs.db
 # 로컬 학습 산출물 (Drive/로컬 보관, 저장소 미포함)
 outputs/
 scratch_v13/
+
+# 드론 비행 로그 (실행마다 재생성)
+flight_log.jsonl
+drone/**/flight_log.jsonl

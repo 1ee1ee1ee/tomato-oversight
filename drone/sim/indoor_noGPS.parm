@@ -1,0 +1,55 @@
+# ArduPilot SITL — 실내(GPS 없음) 옵티컬 플로우 설정
+#
+#   sim_vehicle.py -v ArduCopter -f quad --add-param-file=drone/sim/indoor_noGPS.parm --console
+#
+# 이 파일은 SITL 전용이다. FLOW_TYPE / RNGFND1_TYPE 의 값이 시뮬레이터용이므로
+# 실기체에 그대로 넣지 말 것. 실기체 값은 README 의 체크리스트를 볼 것.
+
+# --- EKF3: 위치를 GPS 대신 옵티컬 플로우에서 받는다 ---
+AHRS_EKF_TYPE    3
+EK3_ENABLE       1
+EK2_ENABLE       0
+EK3_SRC1_POSXY   0     # 없음 (GPS 미사용)
+EK3_SRC1_VELXY   5     # OpticalFlow
+EK3_SRC1_POSZ    2     # RangeFinder — 실내에서는 기압계보다 훨씬 안정적이다
+EK3_SRC1_VELZ    0
+EK3_SRC1_YAW     1     # Compass
+
+# --- 시뮬레이션 센서 ---
+SIM_GPS1_ENABLE  0
+SIM_FLOW_ENABLE  1
+SIM_SONAR_SCALE  10
+FLOW_TYPE        10    # SITL
+RNGFND1_TYPE     100   # SITL
+RNGFND1_MIN_CM   5
+RNGFND1_MAX_CM   400
+RNGFND1_ORIENT   25    # 하방
+
+# --- 실내 비행 특성 ---
+WPNAV_SPEED      100   # cm/s. 실내에서 1m/s 이상은 위험하다.
+WPNAV_SPEED_UP   80
+WPNAV_SPEED_DN   60
+PILOT_SPEED_UP   100
+LOIT_SPEED       100
+ANGLE_MAX        1500  # 최대 기울기 15°. 실내에서 30°는 벽까지 순식간이다.
+
+# --- 안전장치 ---
+FS_THR_ENABLE    1
+BATT_LOW_VOLT    14.0  # 4S 기준. 셀당 3.5V
+BATT_CRT_VOLT    13.6
+BATT_FS_LOW_ACT  2     # RTL
+BATT_FS_CRT_ACT  1     # LAND
+FENCE_ENABLE     1
+FENCE_TYPE       7     # 고도 + 원형 + 다각형
+FENCE_RADIUS     5
+FENCE_ALT_MAX    2.5
+FENCE_ACTION     4     # 경계 안으로 되돌림(SmartRTL 대신) — 실내에서는 RTL이 위험하다
+
+# --- 회피 (companion 이 OBSTACLE_DISTANCE 를 보낼 때) ---
+AVOID_ENABLE     7
+AVOID_MARGIN     1.0
+PRX1_TYPE        2     # MAVLink
+
+# --- GUIDED 모드 (companion 이 속도 명령을 보내는 통로) ---
+SERIAL2_PROTOCOL 2     # MAVLink2 — Telem2 에 온보드 컴퓨터 연결
+SERIAL2_BAUD     921
