@@ -16,7 +16,8 @@ class Limits:
     # --- 실내 지오펜스 (시작 지점 기준 원통) ---
     max_radius_m: float = 4.0      # 수평 반경. 방 크기의 절반보다 작게 잡을 것.
     min_alt_m: float = 0.8         # 이 아래로는 지면 효과로 자세가 흔들린다.
-    max_alt_m: float = 2.0         # 천장 여유. 옵티컬 플로우 ToF 한계(2m)도 고려.
+    max_alt_m: float = 2.0         # 일반적인 방 천장 기준. MTF-02P 의 ToF 는
+                                   # 6m 까지 닿으므로 넓은 공간이면 올려도 된다.
 
     # --- 속도 ---
     max_speed_ms: float = 0.6      # 실내에서 0.6m/s면 충분히 빠르다.
