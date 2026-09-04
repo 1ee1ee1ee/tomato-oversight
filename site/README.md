@@ -51,6 +51,18 @@ python3 -m http.server -d site 8000
 # http://localhost:8000
 ```
 
+## 파일 하나로 뽑기
+
+발표용 USB, 메일 첨부, fetch 를 막는 샌드박스처럼 서버를 띄울 수 없는 자리를
+위해 데이터까지 박아 넣은 단일 HTML 을 만들 수 있습니다. 두 번 눌러 열립니다.
+
+```bash
+python3 site/build.py --single 리플레이.html
+python3 site/build.py --single 리플레이.html --bare   # 문서 껍데기 없이
+```
+
+배포되는 사이트는 이 경로를 쓰지 않습니다 — 사이트는 `index.html` + JSON 둘입니다.
+
 ## 배포
 
 `.github/workflows/pages.yml` 이 `main` 푸시마다 단위 테스트 → 데이터 최신 확인

@@ -3,6 +3,7 @@
     python3 site/build.py            # site/flight_data.json 을 새로 쓴다
     python3 site/build.py --check    # 새로 쓰지 않고, 커밋된 것과 다른지만 본다
     python3 site/build.py --single OUT.html   # 데이터까지 박아 넣은 한 파일
+    python3 site/build.py --single OUT.html --bare   # 문서 껍데기 없이 (임베드용)
 
 site/orders.txt 의 명령을 한 줄씩 컴파일하고, 통과한 것만 시뮬레이터로
 끝까지 비행시켜 프레임을 모은다. 판정(통과/거부)은 여기서 정하지 않는다 —
@@ -114,6 +115,20 @@ def dumps(data: dict) -> str:
             + ",\n  ".join(lines) + "\n ]}\n")
 
 
+# artifact 처럼 자체 <html><head><body> 를 씌우는 호스트가 있다. 거기에
+# 껍데기가 또 들어가면 문서가 중첩된다. 잘라내는 구간은 이 두 표식 사이.
+SHELL_HEAD = "<title>"
+SHELL_TAIL = "\n</body>\n</html>\n"
+
+
+def strip_shell(page: str) -> str:
+    """<!doctype>…<head> 와 </body></html> 를 걷어낸다."""
+    i = page.find(SHELL_HEAD)
+    if i < 0 or not page.endswith(SHELL_TAIL):
+        raise SystemExit("index.html 의 문서 껍데기를 찾지 못했다")
+    return page[i:-len(SHELL_TAIL)] + "\n"
+
+
 def single_file(data_json: str) -> str:
     """index.html 에 데이터를 박아 넣어 파일 하나로 만든다.
 
@@ -128,15 +143,22 @@ def single_file(data_json: str) -> str:
     if page.count(marker) != 1:
         raise SystemExit("index.html 의 fetch 호출을 찾지 못했다 — 빌드 스크립트를 맞춰주세요")
 
-    # </script> 가 데이터 안에 있으면 브라우저가 거기서 스크립트를 닫아버린다.
-    embedded = data_json.replace("</", "<\\/")
+    # 템플릿 리터럴(`...`)에 넣지 않는다. 명령에 백틱이 하나만 들어가도
+    # 문자열이 그 자리에서 끊기고, 백틱은 String.raw 안에서 이스케이프할
+    # 방법이 없다. <script type="application/json"> 은 `</script>` 하나만
+    # 조심하면 되고, 그건 JSON 문법 안에서 "<\/" 로 피할 수 있다.
+    block = ('<script id="flight-data" type="application/json">'
+             + data_json.replace("</", "<\\/") + "</script>\n")
+
+    if page.count("\n<script>\n") != 1:
+        raise SystemExit("index.html 의 <script> 블록을 찾지 못했다")
+
     return page.replace(
         marker,
-        "res = new Response(EMBEDDED);   // 단일 파일 빌드 — fetch 하지 않는다",
-    ).replace(
-        "let DATA = null, LIM = null;",
-        "const EMBEDDED = String.raw`" + embedded + "`;\nlet DATA = null, LIM = null;",
-    )
+        'res = new Response(\n'
+        '      document.getElementById("flight-data").textContent);'
+        '   // 단일 파일 빌드 — fetch 하지 않는다',
+    ).replace("\n<script>\n", "\n" + block + "<script>\n")
 
 
 def _diff(committed: str, fresh: str) -> None:
@@ -173,13 +195,21 @@ def main() -> None:
         "--single", metavar="OUT.html",
         help="데이터를 index.html 안에 박아 넣은 단일 파일을 여기에 쓴다",
     )
+    p.add_argument(
+        "--bare", action="store_true",
+        help="--single 결과에서 <!doctype>/<html>/<body> 를 뺀다 "
+             "(문서 껍데기를 직접 씌우는 호스트용)",
+    )
     args = p.parse_args()
 
     text = dumps(build())
 
     if args.single:
+        page = single_file(text)
+        if args.bare:
+            page = strip_shell(page)
         with open(args.single, "w", encoding="utf-8") as f:
-            f.write(single_file(text))
+            f.write(page)
         print(f"{args.single} — {os.path.getsize(args.single) / 1024:.0f} KB (단일 파일)")
         return
 
