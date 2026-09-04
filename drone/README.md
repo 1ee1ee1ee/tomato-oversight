@@ -6,6 +6,7 @@ GPS도 클라우드도 쓰지 않는다. 기체 안에서 인식하고, 기체 �
 ```
 python3 -m drone.main --fast      # 하드웨어 없이 즉시 완주 (설치할 것 없음)
 python3 -m drone.main --order "의자 몇 개 있는지 세줘" --fast
+python3 -m drone.main --dashboard # 관제 대시보드 → http://localhost:8080
 python3 -m unittest discover -s drone/tests -t .
 ```
 
@@ -16,7 +17,7 @@ python3 -m unittest discover -s drone/tests -t .
 
 | 계층 | 상태 |
 |---|---|
-| 판단(policy) · 안전(guard) · 명령 컴파일러 · 시뮬레이션 | **동작 확인. 테스트 108개** |
+| 판단(policy) · 안전(guard) · 명령 컴파일러 · 시뮬레이션 | **동작 확인. 테스트 125개** |
 | MAVLink 연동 (`link.py`) | 작성 완료, **실기체 미검증** |
 | OAK-D / ONNX 인식 백엔드 | 작성 완료, **실기체 미검증** |
 
@@ -42,6 +43,43 @@ ArduPilot    제어   400Hz~1kHz  자세·위치. 이 코드는 여기 손대지
 실내에는 "왜 그렇게 움직였는지 모르겠다"를 흡수할 여유 공간이 없기 때문이다.
 학습 정책이나 소형 VLM으로 바꾸려면 `Policy.step()` 하나만 교체하면 된다.
 Guard는 그대로 두면 된다 — 그게 Guard의 존재 이유다.
+
+### 관제 대시보드
+
+```bash
+python3 -m drone.main --dashboard          # http://localhost:8080
+python3 -m drone.main --dashboard --perception oakd --rangefinders vl53l1x --link mavlink
+```
+
+브라우저에서 한국어로 입력하거나 마이크 버튼으로 말하면, 컴파일 결과와
+검증 통과 여부가 그대로 화면에 뜬다. 통과하지 못한 명령은 비행이 시작되지
+않고 사유만 남는다.
+
+```
+❌ 거부 — 프로펠러가 돌지 않습니다
+   명령   사람 앞 30cm 까지 가
+   임무   approach_inspect
+   • 정지 거리 0.3m 가 전방 회피 여유 1.0m 보다 짧다
+```
+
+화면 구성: 명령 입력 · 컴파일 결과 · 기체 상태 타일 · **Guard 개입 근거** ·
+비행 로그 · 탑다운 맵(지오펜스와 궤적) · 카메라(MJPEG).
+
+**의존성이 없다.** Flask 도 WebSocket 라이브러리도 쓰지 않는다 —
+`http.server` + SSE(Server-Sent Events) + MJPEG 로 표준 라이브러리만 쓴다.
+관제 화면은 서버→클라이언트 한 방향이면 되므로 SSE 로 충분하다.
+음성 입력은 브라우저 내장 Web Speech API 라 서버 코드가 없다(크롬 권장).
+
+| 엔드포인트 | 용도 |
+|---|---|
+| `POST /api/order` | 자연어 명령 → 컴파일 → 검증 → (통과 시) 비행 시작 |
+| `POST /api/stop` | 비행 중단 요청 |
+| `GET /api/stream` | SSE. 매 틱 상태 |
+| `GET /api/camera` | MJPEG. 프레임이 없으면 204 |
+| `GET /api/state` · `/api/track` · `/api/limits` | 스냅샷·궤적·안전 한계 |
+
+비행 루프는 대시보드의 존재를 모른다. `main.run()` 의 `on_tick` /
+`should_stop` 훅에 `Hub` 가 붙을 뿐이다.
 
 ### 장애물 감지는 별도 센서 없이 OAK-D 뎁스로 한다
 
@@ -413,5 +451,6 @@ drone/
   main.py         실행 루프.
   sim/            SITL 파라미터.
   rangefinders.py VL53L1X ToF 배열 (좌·우·후방).
-  tests/          108개.
+  dashboard/      관제 대시보드 (http.server + SSE + MJPEG).
+  tests/          125개.
 ```

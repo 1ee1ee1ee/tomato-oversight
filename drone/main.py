@@ -28,6 +28,7 @@ def build_config(args) -> Config:
         perception_backend=args.perception,
         rangefinder_backend=args.rangefinders,
         link_backend=args.link,
+        compiler_backend=args.compiler,
         mavlink_url=args.mavlink_url,
         log_path=args.log,
     )
@@ -40,7 +41,16 @@ def run(
     fast: bool = False,
     max_seconds: float = 240.0,
     spec: MissionSpec | None = None,
+    on_tick=None,
+    should_stop=None,
 ) -> dict:
+    """비행 루프를 끝까지 돌린다.
+
+    ``on_tick(record, telem, percep, result)`` 이 주어지면 매 틱 호출한다.
+    관제 대시보드가 여기에 붙는다 — 루프는 대시보드의 존재를 모른다.
+    ``should_stop()`` 이 True 를 돌려주면 즉시 착륙 없이 루프를 끊는다
+    (대시보드의 중단 버튼용. 기체는 GUIDED 타임아웃으로 정지한다).
+    """
     mission = spec.to_mission(cfg.mission) if spec is not None else cfg.mission
     source = perception_mod.build(dataclasses.replace(
         cfg, mission=mission
@@ -97,6 +107,10 @@ def run(
                 "reason": result.command.reason,
             }
             log.write(json.dumps(record, ensure_ascii=False) + "\n")
+            log.flush()          # 대시보드/외부에서 실시간으로 읽을 수 있게
+
+            if on_tick is not None:
+                on_tick(record, telem, percep, result)
 
             if ticks % 5 == 0 or result.vetoes:
                 flag = ("  ⚠ " + ",".join(result.vetoes)) if result.vetoes else ""
@@ -108,6 +122,10 @@ def run(
                 )
 
             if policy.phase is Phase.DONE:
+                break
+
+            if should_stop is not None and should_stop():
+                print("외부 중단 요청 — 루프 종료")
                 break
 
             virtual += dt
@@ -156,9 +174,22 @@ def main() -> None:
     p.add_argument(
         "--dry-run", action="store_true", help="명령만 컴파일하고 비행하지 않는다"
     )
+    p.add_argument(
+        "--dashboard", action="store_true",
+        help="관제 대시보드를 띄운다. 명령 입력·상태·판단 근거를 한 화면에서 본다",
+    )
+    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--port", type=int, default=8080)
     args = p.parse_args()
 
     cfg = build_config(args)
+
+    if args.dashboard:
+        from .dashboard import serve
+
+        serve(cfg, host=args.host, port=args.port, fast=args.fast)
+        return
+
     spec = None
 
     if args.order:
