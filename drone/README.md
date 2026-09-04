@@ -19,7 +19,7 @@ python3 site/build.py && python3 -m http.server -d site 8000   # 공개 재생 �
 
 | 계층 | 상태 |
 |---|---|
-| 판단(policy) · 안전(guard) · 명령 컴파일러 · 시뮬레이션 | **동작 확인. 테스트 131개** |
+| 판단(policy) · 안전(guard) · 명령 컴파일러 · 시뮬레이션 | **동작 확인. 테스트 134개** |
 | MAVLink 연동 (`link.py`) | 작성 완료, **실기체 미검증** |
 | OAK-D / ONNX 인식 백엔드 | 작성 완료, **실기체 미검증** |
 
@@ -466,7 +466,7 @@ drone/
   sim/            SITL 파라미터.
   rangefinders.py VL53L1X ToF 배열 (좌·우·후방).
   dashboard/      관제 대시보드 (http.server + SSE + MJPEG).
-  tests/          131개.
+  tests/          134개.
 
 site/             공개 재생 페이지. GitHub Pages 로 자동 배포된다.
   orders.txt      페이지에 실릴 자연어 명령 목록. ← 공동 편집 지점
@@ -481,7 +481,7 @@ site/             공개 재생 페이지. GitHub Pages 로 자동 배포된다.
 관제 대시보드와 다르다 — **명령을 받지 않고, 기체를 움직이지 않는다.**
 그래서 공개해도 된다.
 
-`.github/workflows/pages.yml` 이 `main` 푸시마다 테스트 131개를 돌리고,
+`.github/workflows/pages.yml` 이 `main` 푸시마다 테스트 134개를 돌리고,
 `site/build.py --check` 로 페이지에 실린 데이터가 지금 코드가 만들어내는 것과
 같은지 확인한 뒤 GitHub Pages 에 올린다. 손으로 배포하는 단계가 없다.
 

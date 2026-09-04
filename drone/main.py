@@ -60,7 +60,11 @@ def run(
     guard = Guard(cfg.limits)
 
     dt = 1.0 / cfg.runtime.loop_hz
-    started = time.monotonic()
+    # fast 모드의 시계는 실제 시각에 매지 않는다. started 가 크면
+    # started + virtual 의 부동소수 반올림 폭도 커져서, 4.0초 같은 경계를
+    # 넘는 시점이 한 틱씩 밀린다 — 같은 코드가 기계마다 다른 로그를 낸다.
+    # 재생 페이지의 데이터가 재현 가능해야 하므로 0 에서 시작한다.
+    started = 0.0 if fast else time.monotonic()
     virtual = 0.0
     vetoed_ticks = 0
     ticks = 0

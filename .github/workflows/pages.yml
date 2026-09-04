@@ -41,6 +41,17 @@ jobs:
       - name: 단위 테스트
         run: python3 -m unittest discover -s drone/tests -t . -v
 
+      # 페이지 헤더에 적힌 테스트 개수가 실제와 같은지 본다. 사람이 손으로
+      # 적는 숫자는 반드시 낡는다 — 낡으면 조용히 틀린 채로 공개된다.
+      - name: 페이지의 테스트 개수
+        run: |
+          set -euo pipefail
+          actual=$(python3 -m unittest discover -s drone/tests -t . 2>&1 \
+                   | grep -oP 'Ran \K[0-9]+')
+          shown=$(grep -oP 'id="f-tests">\K[0-9]+' site/index.html)
+          echo "실제 $actual · 페이지 $shown"
+          test "$actual" = "$shown"
+
       # 페이지에 실린 비행 데이터가 지금 코드가 만들어내는 것과 같은지 본다.
       # orders.txt 만 고치고 build.py 를 안 돌린 PR 은 여기서 걸린다.
       - name: 재생 데이터 최신 여부
