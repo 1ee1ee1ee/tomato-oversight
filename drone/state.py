@@ -61,10 +61,14 @@ class Perception:
     """한 프레임의 인식 결과."""
 
     detections: tuple[Detection, ...] = ()
-    # 전/좌/우 ToF 거리계. 값이 없으면 None (센서 미장착 또는 측정 실패).
+    # 전/좌/우 거리. 값이 없으면 None = **그 방향에 센서가 없다**는 뜻.
     front_m: float | None = None
     left_m: float | None = None
     right_m: float | None = None
+    # 전방 센서는 있는데 값을 못 내는 상태(뎁스 미검출, 무늬 없는 흰 벽, 역광).
+    # front_m=None(센서 없음)과 반드시 구분해야 한다. 전자는 '검사 없음',
+    # 후자는 '눈을 감은 상태'이고, 눈을 감았으면 앞으로 가면 안 된다.
+    forward_blind: bool = False
     stamp: float = field(default_factory=time.monotonic)
 
     def best(self, label: str, min_conf: float) -> Detection | None:

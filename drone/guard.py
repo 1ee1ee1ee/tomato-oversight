@@ -141,6 +141,12 @@ class Guard:
         if percep is None or stale:
             return cmd
 
+        # 전방 센서가 값을 못 내는 상태. '센서 없음'과 다르게 취급한다.
+        # 유일한 전방 센서가 눈을 감았으면 전진을 허용할 근거가 없다.
+        if percep.forward_blind and cmd.vx > 0:
+            vetoes.append("forward_blind")
+            cmd = cmd.replace(vx=0.0, reason="전방 거리 측정 불가 — 전진 차단")
+
         if percep.front_m is not None and percep.front_m < lim.min_front_m and cmd.vx > 0:
             vetoes.append("obstacle_front")
             cmd = cmd.replace(vx=0.0, reason=f"전방 {percep.front_m:.2f}m — 전진 차단")

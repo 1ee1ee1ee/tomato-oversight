@@ -161,11 +161,56 @@ class OakDSource:
         out.setStreamName("det")
         net.out.link(out.input)
 
+        # 뎁스맵을 따로 뺀다. 이것이 전방 거리계 역할을 한다 —
+        # 별도 ToF 센서를 달지 않는 이유다.
+        depth_out = pipeline.create(dai.node.XLinkOut)
+        depth_out.setStreamName("depth")
+        net.passthroughDepth.link(depth_out.input)
+
         self._device = dai.Device(pipeline)
         self._queue = self._device.getOutputQueue("det", maxSize=4, blocking=False)
+        self._depth_queue = self._device.getOutputQueue("depth", maxSize=4, blocking=False)
+        self._front_m: float | None = None
+        self._blind = True
         self.labels = labels
 
+    #: 뎁스가 유효하다고 볼 범위(mm). 밖의 값은 노이즈로 버린다.
+    MIN_VALID_MM = 200
+    MAX_VALID_MM = 8000
+    #: 이보다 유효 픽셀이 적으면 '전방을 못 본다'로 판단한다.
+    MIN_VALID_PIXELS = 400
+
+    @classmethod
+    def _forward_clearance(cls, depth_mm) -> tuple[float | None, bool]:
+        """스테레오 뎁스맵에서 전방 최소 거리를 뽑는다.
+
+        검출 결과(bounding box)가 아니라 뎁스 원본을 쓴다. 모델이 아무것도
+        못 알아봐도 벽은 벽이기 때문이다.
+
+        반환값은 ``(거리_m, 눈을 감았는가)``. 유효 픽셀이 부족하면 거리를
+        지어내지 않고 blind 를 세운다 — 무늬 없는 흰 벽에 가까이 붙으면
+        스테레오가 통째로 실패하는데, 그때가 바로 멈춰야 할 순간이다.
+        """
+        import numpy as np
+
+        h, w = depth_mm.shape
+        # 중앙 영역만 본다. 가장자리에는 프롭과 기체 프레임이 걸린다.
+        band = depth_mm[int(h * 0.30):int(h * 0.70), int(w * 0.25):int(w * 0.75)]
+        valid = band[(band >= cls.MIN_VALID_MM) & (band <= cls.MAX_VALID_MM)]
+
+        if valid.size < cls.MIN_VALID_PIXELS:
+            return None, True
+
+        # 최솟값이 아니라 하위 5퍼센타일. 튀는 픽셀 하나에 기체가 멈추지 않게 한다.
+        return float(np.percentile(valid, 5)) / 1000.0, False
+
     def read(self, telem: Telemetry | None) -> Perception | None:
+        depth_packet = self._depth_queue.tryGet()
+        if depth_packet is not None:
+            self._front_m, self._blind = self._forward_clearance(
+                depth_packet.getFrame()
+            )
+
         packet = self._queue.tryGet()
         if packet is None:
             return None
@@ -184,8 +229,13 @@ class OakDSource:
                     has_depth=True,
                 )
             )
-        # 거리계는 별도 ToF 센서에서 채운다(link 계층에서 병합).
-        return Perception(detections=tuple(detections))
+        # 좌/우는 None 으로 남긴다. OAK-D 는 전방만 본다 — 옆과 뒤에는
+        # 눈이 없다. Policy 가 기수를 먼저 돌린 뒤에만 전진하는 이유다.
+        return Perception(
+            detections=tuple(detections),
+            front_m=self._front_m,
+            forward_blind=self._blind,
+        )
 
     def close(self) -> None:
         self._device.close()
