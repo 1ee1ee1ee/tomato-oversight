@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%234EA8DE' stroke-width='2' stroke-dasharray='4 3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%234FB477'/%3E%3C/svg%3E">
+<meta name="description" content="한국어 명령을 이륙 전에 검증하고 통과한 것만 비행하는 실내 자율 드론. 시뮬레이터 비행 로그 재생.">
+<title>드론 임무 리플레이</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@300;400;500;600&display=swap">
+
+<style>
+/* 밝은 계기 시트가 기본. 모든 토큰을 여기서 먼저 정의한다. */
+:root {
+  --ground:#EDF1F6; --panel:#FFFFFF; --sunk:#E2E9F1; --line:#CDD9E5; --grid:#DFE7EF;
+  --ink:#14202E; --dim:#5C7186;
+  --accent:#1C6EA4; --caution:#B0731A; --good:#2B7A50; --stop:#BE3A2F;
+  --shadow:0 1px 2px rgba(20,32,46,.06), 0 8px 24px rgba(20,32,46,.05);
+  --sans:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+/* 시스템 다크 — 명시적으로 밝게 고른 경우는 제외 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:#0E1520; --panel:#16202D; --sunk:#111A25; --line:#25303F; --grid:#1D2836;
+    --ink:#E3EBF4; --dim:#8195AA;
+    --accent:#4EA8DE; --caution:#E8A33D; --good:#4FB477; --stop:#E2564B;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.28);
+  }
+}
+/* 명시적 다크 선택 */
+:root[data-theme="dark"] {
+  --ground:#0E1520; --panel:#16202D; --sunk:#111A25; --line:#25303F; --grid:#1D2836;
+  --ink:#E3EBF4; --dim:#8195AA;
+  --accent:#4EA8DE; --caution:#E8A33D; --good:#4FB477; --stop:#E2564B;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.28);
+}
+
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--ground); color:var(--ink);
+  font:400 15px/1.6 var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3 { text-wrap:balance; margin:0; }
+.wrap { max-width:1180px; margin:0 auto; padding:0 24px; }
+
+/* ── 헤더 ───────────────────────────────────────────── */
+header { border-bottom:1px solid var(--line); background:var(--panel); }
+.head { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px 28px; padding:30px 0 24px; }
+h1 { font-size:27px; font-weight:600; letter-spacing:-.5px; }
+.sub { color:var(--dim); font-size:14.5px; max-width:60ch; margin-top:5px; }
+.facts { display:flex; gap:22px; margin-left:auto; flex-wrap:wrap; }
+.fact .n { font:600 19px/1.2 var(--mono); font-variant-numeric:tabular-nums; }
+.fact .l { font-size:11px; color:var(--dim); letter-spacing:.5px; margin-top:2px; }
+
+/* ── 본문 ───────────────────────────────────────────── */
+main { display:grid; gap:20px; grid-template-columns:300px minmax(0,1fr); padding:24px 0 8px; }
+@media (max-width:940px) { main { grid-template-columns:1fr; } }
+.col { display:grid; gap:16px; align-content:start; }
+
+.lab { font:500 11px/1 var(--sans); letter-spacing:.9px; color:var(--dim);
+       text-transform:uppercase; margin-bottom:9px; }
+
+/* 임무 목록 — 카드가 아니라 목록. 선택된 항목만 들어올린다. */
+.missions { display:grid; gap:2px; }
+.m {
+  display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:center;
+  padding:11px 13px; border:1px solid transparent; border-radius:7px;
+  background:none; text-align:left; cursor:pointer; color:inherit;
+  font:400 14px/1.4 var(--sans); width:100%;
+}
+.m:hover { background:var(--sunk); }
+.m[aria-current="true"] { background:var(--panel); border-color:var(--line); box-shadow:var(--shadow); }
+.m .o { font-weight:500; }
+.m .meta { grid-column:1; font:400 11.5px/1 var(--mono); color:var(--dim); }
+.chip { font:500 10.5px/1 var(--mono); padding:4px 7px; border-radius:4px; letter-spacing:.3px; }
+.chip.ok  { color:var(--good); background:color-mix(in srgb, var(--good) 13%, transparent); }
+.chip.no  { color:var(--stop); background:color-mix(in srgb, var(--stop) 15%, transparent); }
+.m:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+
+/* 판정 — 이 페이지의 요점. 왼쪽 스트라이프로 상태를 인코딩한다. */
+.verdict { background:var(--panel); border:1px solid var(--line); border-radius:9px;
+           border-left-width:3px; padding:16px 18px; box-shadow:var(--shadow); }
+.verdict.ok { border-left-color:var(--good); }
+.verdict.no { border-left-color:var(--stop); }
+.verdict h2 { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.verdict.ok h2 { color:var(--good); }
+.verdict.no h2 { color:var(--stop); }
+.spec { display:grid; grid-template-columns:auto 1fr; gap:3px 16px; margin:12px 0 0;
+        font:400 12.5px/1.6 var(--mono); }
+.spec dt { color:var(--dim); }
+.spec dd { margin:0; }
+.reasons { margin:12px 0 0; padding-left:17px; font-size:13.5px; }
+.reasons li { margin:3px 0; }
+.reasons .p { color:var(--stop); }
+.reasons .nt { color:var(--dim); }
+
+/* 무대 */
+.stage { background:var(--panel); border:1px solid var(--line); border-radius:9px;
+         box-shadow:var(--shadow); overflow:hidden; }
+.stage-grid { display:grid; grid-template-columns:minmax(0,1fr) 232px; }
+@media (max-width:760px) { .stage-grid { grid-template-columns:1fr; } }
+#map { display:block; width:100%; height:auto; background:var(--sunk); }
+.side { border-left:1px solid var(--line); display:grid; align-content:start; }
+@media (max-width:760px) { .side { border-left:none; border-top:1px solid var(--line); } }
+.ro { padding:11px 15px; border-bottom:1px solid var(--line); }
+.ro .k { font-size:10.5px; letter-spacing:.5px; color:var(--dim); }
+.ro .v { font:500 17px/1.25 var(--mono); font-variant-numeric:tabular-nums; margin-top:2px; }
+.ro .v.sm { font-size:14px; }
+/* 계기 열이 맵 높이를 채우게 한다 — 아래가 비면 미완성으로 읽힌다. */
+.side { grid-auto-rows:1fr; }
+.side .ro:last-child { border-bottom:none; }
+/* 거부된 명령에는 비행이 없다. 맵과 재생을 접고 상태만 남긴다. */
+.stage.norun .stage-grid, .stage.norun .transport { display:none; }
+.stage.norun .guard { border-top:none; padding:22px 18px; }
+.norun-note { display:flex; gap:9px; align-items:baseline; }
+.norun-note .mk { color:var(--stop); font:600 13px var(--mono); }
+.norun-note .tx { font-size:13.5px; color:var(--dim); }
+
+/* 재생 */
+.transport { display:flex; align-items:center; gap:13px; padding:12px 16px;
+             border-top:1px solid var(--line); background:var(--panel); }
+button.play { font:500 13px/1 var(--sans); padding:9px 15px; border-radius:6px; cursor:pointer;
+              background:var(--accent); color:var(--panel); border:1px solid var(--accent); }
+button.play:hover { filter:brightness(1.08); }
+button.play:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+input[type=range] { flex:1; accent-color:var(--accent); min-width:0; }
+.clock { font:500 13px/1 var(--mono); font-variant-numeric:tabular-nums; color:var(--dim);
+         min-width:74px; text-align:right; }
+
+/* Guard */
+.guard { padding:13px 16px; border-top:1px solid var(--line); min-height:56px; }
+.guard .quiet { color:var(--good); font-size:13px; }
+.veto { display:inline-block; font:500 11px/1 var(--mono); padding:4px 8px; border-radius:4px;
+        margin:0 5px 4px 0; color:var(--stop);
+        background:color-mix(in srgb, var(--stop) 14%, transparent); }
+.why { margin-top:6px; font:400 12.5px/1.5 var(--mono); color:var(--dim); }
+
+/* 계층 설명 */
+.layers { border-top:1px solid var(--line); margin-top:34px; padding:30px 0 46px; }
+.layers h2 { font-size:17px; font-weight:600; }
+.layers > .wrap > p { color:var(--dim); max-width:64ch; margin:7px 0 20px; font-size:14.5px; }
+.stack { display:grid; gap:1px; background:var(--line); border:1px solid var(--line);
+         border-radius:9px; overflow:hidden; }
+.layer { display:grid; grid-template-columns:118px 92px 1fr; gap:14px; align-items:baseline;
+         background:var(--panel); padding:13px 17px; }
+@media (max-width:640px) { .layer { grid-template-columns:1fr; gap:3px; } }
+.layer .nm { font:600 13.5px/1.4 var(--mono); }
+.layer .hz { font:400 12px/1.4 var(--mono); color:var(--dim); font-variant-numeric:tabular-nums; }
+.layer .ds { font-size:13.5px; color:var(--dim); }
+.layer.key { background:color-mix(in srgb, var(--caution) 9%, var(--panel)); }
+.layer.key .nm { color:var(--caution); }
+.layer.key .ds { color:var(--ink); }
+
+footer { border-top:1px solid var(--line); padding:20px 0 40px; color:var(--dim); font-size:12.5px; }
+footer code { font:400 12px var(--mono); background:var(--sunk); padding:2px 6px; border-radius:4px; }
+
+@media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+/* ── GitHub 연계 줄 ─────────────────────────────────── */
+.repo { display:flex; flex-wrap:wrap; gap:0 18px; align-items:center;
+        border-top:1px solid var(--line); padding:9px 0; font-size:12.5px; }
+.repo a { color:var(--accent); text-decoration:none; border-bottom:1px solid transparent; }
+.repo a:hover { border-bottom-color:currentColor; }
+.repo a:focus-visible { outline:2px solid var(--ink); outline-offset:3px; border-radius:2px; }
+.repo .src { font:400 12px var(--mono); color:var(--dim); margin-right:auto; }
+
+/* ── 데이터 로드 실패 ───────────────────────────────── */
+.boot { background:var(--panel); border:1px solid var(--line); border-radius:9px;
+        box-shadow:var(--shadow); padding:22px 24px; margin:24px 0; }
+.boot h2 { font-size:16px; font-weight:600; color:var(--stop); }
+.boot p { color:var(--dim); font-size:14px; max-width:64ch; margin:8px 0 0; }
+.boot pre { font:400 12.5px/1.7 var(--mono); background:var(--sunk); color:var(--ink);
+            border-radius:6px; padding:12px 14px; margin:14px 0 0; overflow-x:auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap head">
+    <div>
+      <h1>드론 임무 리플레이</h1>
+      <p class="sub">
+        GPS도 클라우드도 없이 방 안에서 스스로 나는 드론입니다. 한국어 명령을
+        <strong>이륙 전에 딱 한 번</strong> 해석하고, 안전 한계와 대조해 통과한 것만
+        비행합니다. 아래는 시뮬레이션에서 실제로 기록된 비행 로그입니다.
+      </p>
+    </div>
+    <div class="facts">
+      <div class="fact"><div class="n" id="f-tests">131</div><div class="l">테스트</div></div>
+      <div class="fact"><div class="n">4</div><div class="l">임무 유형</div></div>
+      <div class="fact"><div class="n">0</div><div class="l">외부 의존성</div></div>
+    </div>
+  </div>
+  <div class="wrap repo">
+    <span class="src">1ee1ee1ee/tomato-oversight · site/</span>
+    <a href="https://github.com/1ee1ee1ee/tomato-oversight/tree/main/drone">소스 보기</a>
+    <a href="https://github.com/1ee1ee1ee/tomato-oversight/edit/main/site/orders.txt">명령 추가하기</a>
+    <a href="https://github.com/1ee1ee1ee/tomato-oversight/edit/main/site/index.html">이 페이지 편집</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="boot" id="boot" hidden></div>
+  <main id="main" hidden>
+    <div class="col">
+      <div>
+        <div class="lab">명령 — 눌러서 재생</div>
+        <div class="missions" id="missions" role="tablist"></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="verdict" id="verdict"></div>
+
+      <div class="stage">
+        <div class="stage-grid">
+          <svg id="map" viewBox="0 0 560 400" role="img"
+               aria-label="비행 궤적 탑다운 맵"></svg>
+          <div class="side" id="readout"></div>
+        </div>
+        <div class="guard" id="guard"></div>
+        <div class="transport">
+          <button class="play" id="play" type="button">재생</button>
+          <input type="range" id="scrub" min="0" max="0" value="0" aria-label="비행 시각">
+          <span class="clock" id="clock">0.0s</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<section class="layers">
+  <div class="wrap">
+    <h2>왜 이렇게 나뉘어 있는가</h2>
+    <p>
+      아래로 갈수록 빠르고, 단순하고, 믿을 수 있습니다. 언어 모델을 제어 루프에 넣으면
+      모델이 틀렸을 때 그 결과가 곧바로 기체 움직임이 됩니다. 그래서 자연어는 지상에서
+      한 번만 읽습니다.
+    </p>
+    <div class="stack">
+      <div class="layer key">
+        <div class="nm">compiler</div><div class="hz">이륙 전 1회</div>
+        <div class="ds">한국어 명령 → 임무 명세. Guard의 한계와 대조해 검증하고, 통과하지 못하면 프로펠러가 돌지 않습니다.</div>
+      </div>
+      <div class="layer">
+        <div class="nm">policy</div><div class="hz">0.5–10 Hz</div>
+        <div class="ds">상태기계. 다음에 뭘 할지 정합니다. 신경망은 인식에서만 일합니다.</div>
+      </div>
+      <div class="layer">
+        <div class="nm">guard</div><div class="hz">매 틱</div>
+        <div class="ds">결정론적 if 문. 인식 모델의 보고가 아니라 센서 원본만 봅니다. 여기를 통과해야 명령이 나갑니다.</div>
+      </div>
+      <div class="layer">
+        <div class="nm">link</div><div class="hz">10–20 Hz</div>
+        <div class="ds">MAVLink. 승인된 속도 명령만 비행 컨트롤러로 내려보냅니다.</div>
+      </div>
+      <div class="layer">
+        <div class="nm">ArduPilot</div><div class="hz">400 Hz – 1 kHz</div>
+        <div class="ds">자세·위치 제어. 이 프로젝트는 여기를 건드리지 않습니다.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    실내 위치 추정은 GPS 대신 옵티컬 플로우(MicoAir MTF-02P)를, 전방 감지는 OAK-D Lite
+    스테레오 뎁스를, 좌·우·후방은 VL53L1X ToF를 씁니다. 지오펜스 4 m · 순항 고도 1.3 m ·
+    최대 속도 0.6 m/s. 재생 데이터는 <code>drone/main.py</code> 시뮬레이터가 기록한 실제
+    비행 로그입니다.
+    <p style="margin:10px 0 0">
+      이 페이지와 재생 데이터는 저장소에서 만들어집니다.
+      <code>site/orders.txt</code> 에 한국어 명령을 한 줄 추가하면
+      CI 가 그 명령을 컴파일하고 시뮬레이터로 비행시킨 뒤 여기에 실어줍니다 —
+      통과·거부 판정은 사람이 적는 게 아니라 <code>validate()</code> 가 내립니다.
+      <a href="https://github.com/1ee1ee1ee/tomato-oversight/blob/main/site/README.md"
+         style="color:var(--accent)">공동 편집 방법</a>
+    </p>
+  </div>
+</footer>
+
+<script>
+/* 비행 데이터는 flight_data.json 에서 읽는다. site/build.py 가 시뮬레이터를
+   돌려 만들고 CI 가 최신인지 확인한다 — HTML 안에 손으로 넣지 않는다. */
+let DATA = null, LIM = null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+const BEHAVIOR_KO = {
+  approach_inspect: "찾아가 관찰", count: "세기", follow: "추종", patrol: "순찰",
+};
+
+let current = null;   // 선택된 시나리오
+let frame = 0;        // 재생 위치
+let timer = null;
+
+/* ── 임무 목록 ─────────────────────────────────────── */
+function buildMissions() {
+  DATA.scenarios.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.className = "m";
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.innerHTML =
+      `<span class="o">${esc(s.order)}</span>` +
+      `<span class="chip ${s.accepted ? "ok" : "no"}">${s.accepted ? "통과" : "거부"}</span>` +
+      `<span class="meta">${s.accepted
+        ? `${esc(BEHAVIOR_KO[s.behavior] || s.behavior)} · ${esc(s.target)} · ${s.log.length}프레임`
+        : "비행 없음"}</span>`;
+    b.onclick = () => select(i);
+    $("missions").appendChild(b);
+  });
+}
+
+function select(i) {
+  stop();
+  current = DATA.scenarios[i];
+  frame = 0;
+  [...$("missions").children].forEach((el, j) =>
+    el.setAttribute("aria-current", String(j === i)));
+  renderVerdict();
+  const n = current.log.length;
+  document.querySelector(".stage").classList.toggle("norun", n === 0);
+  $("scrub").max = Math.max(0, n - 1);
+  $("scrub").value = 0;
+  $("scrub").disabled = n === 0;
+  $("play").disabled = n === 0;
+  // 정지 상태에서도 궤적이 보이도록 중반 프레임을 먼저 띄운다.
+  if (n) { frame = Math.floor(n * 0.55); $("scrub").value = frame; }
+  paint();
+}
+
+/* ── 판정 ─────────────────────────────────────────── */
+function renderVerdict() {
+  const s = current, v = $("verdict");
+  v.className = "verdict " + (s.accepted ? "ok" : "no");
+  const rows = [
+    ["명령", s.order],
+    ["임무", `${BEHAVIOR_KO[s.behavior] || s.behavior}  (${s.behavior})`],
+    ["대상", s.target],
+    ["정지 거리", s.stop_distance_m.toFixed(2) + " m"],
+    ["순항 고도", s.cruise_alt_m.toFixed(2) + " m"],
+  ];
+  let html = `<h2>${s.accepted ? "검증 통과 — 비행 시작" : "거부 — 프로펠러가 돌지 않습니다"}</h2><dl class="spec">`;
+  rows.forEach(([k, val]) => { html += `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`; });
+  html += "</dl>";
+  if (s.problems.length || s.notes.length) {
+    html += `<ul class="reasons">`;
+    s.problems.forEach((p) => html += `<li class="p">${esc(p)}</li>`);
+    s.notes.forEach((n) => html += `<li class="nt">${esc(n)}</li>`);
+    html += "</ul>";
+  }
+  v.innerHTML = html;
+}
+
+/* ── 맵 ───────────────────────────────────────────── */
+/* 픽셀 viewBox 를 쓰고 미터를 픽셀로 변환한다.
+   viewBox 단위를 그대로 쓰면 글자 크기가 미터 단위가 되어 거대해진다. */
+const W = 560, H = 400, PAD = 26;
+const CX = W / 2, CY = H / 2;
+let span = 0, SCALE = 1;   // LIM 을 읽은 뒤 boot() 에서 정한다
+const px = (east) => CX + east * SCALE;
+const py = (north) => CY - north * SCALE;   // 북쪽이 위
+
+function paint() {
+  const s = current;
+  const row = s.log[frame] || null;
+  const upto = s.log.slice(0, frame + 1);
+  const pts = upto.map((r) => `${px(r.e).toFixed(1)},${py(r.n).toFixed(1)}`).join(" ");
+
+  const grid = [];
+  for (let m = -Math.floor(span / 2); m <= span / 2; m++) {
+    grid.push(`<line x1="${px(m)}" y1="0" x2="${px(m)}" y2="${H}"/>`);
+    grid.push(`<line x1="0" y1="${py(m)}" x2="${W}" y2="${py(m)}"/>`);
+  }
+
+  $("map").innerHTML = `
+    <rect x="0" y="0" width="${W}" height="${H}" fill="var(--sunk)"/>
+    <g stroke="var(--grid)" stroke-width="1" fill="none">${grid.join("")}</g>
+    <circle cx="${CX}" cy="${CY}" r="${LIM.max_radius_m * SCALE}" fill="none"
+            stroke="var(--caution)" stroke-width="1.5" stroke-dasharray="6 5" opacity=".85"/>
+    <text x="${PAD - 8}" y="${PAD - 4}" font-family="var(--mono)" font-size="11"
+          fill="var(--dim)">지오펜스 ${LIM.max_radius_m} m · 북 ↑</text>
+    <circle cx="${CX}" cy="${CY}" r="3.5" fill="var(--dim)"/>
+    <text x="${CX + 8}" y="${CY + 4}" font-family="var(--mono)" font-size="11"
+          fill="var(--dim)">시작</text>
+    ${pts ? `<polyline points="${pts}" fill="none" stroke="var(--track, var(--accent))"
+              stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity=".9"/>` : ""}
+    ${row ? `<circle cx="${px(row.e)}" cy="${py(row.n)}" r="6" fill="var(--good)"/>` : ""}
+  `;
+
+  renderReadout(row);
+  renderGuard(row);
+  $("clock").textContent = row ? row.t.toFixed(1) + "s" : "—";
+}
+
+function renderReadout(r) {
+  const cells = r ? [
+    ["단계", r.phase, ""],
+    ["명령", r.action, ""],
+    ["고도", r.alt.toFixed(2) + " m", ""],
+    ["위치 N / E", `${r.n.toFixed(2)} / ${r.e.toFixed(2)}`, "sm"],
+    ["배터리", r.batt.toFixed(0) + " %", "",
+      r.batt <= 20 ? "var(--stop)" : r.batt <= 35 ? "var(--caution)" : ""],
+  ] : [["상태", "비행 없음", "sm"]];
+  $("readout").innerHTML = cells.map(([k, v, cls, color]) =>
+    `<div class="ro"><div class="k">${esc(k)}</div>` +
+    `<div class="v ${cls}"${color ? ` style="color:${color}"` : ""}>${esc(v)}</div></div>`
+  ).join("");
+}
+
+function renderGuard(r) {
+  const g = $("guard");
+  if (!r) {
+    g.innerHTML = `<div class="norun-note"><span class="mk">비행 없음</span>`
+      + `<span class="tx">검증을 통과하지 못했습니다. 시동도 걸리지 않고, 프로펠러도 돌지 않습니다.</span></div>`;
+    return;
+  }
+  g.innerHTML = (r.vetoes.length
+    ? r.vetoes.map((v) => `<span class="veto">${esc(v)}</span>`).join("")
+    : `<span class="quiet">Guard 개입 없음</span>`)
+    + `<div class="why">${esc(r.reason)}</div>`;
+}
+
+/* ── 재생 ─────────────────────────────────────────── */
+function step() {
+  if (!current || !current.log.length) return;
+  frame = (frame + 1) % current.log.length;
+  $("scrub").value = frame;
+  paint();
+}
+function play() {
+  if (timer) return stop();
+  if (frame >= current.log.length - 1) frame = 0;
+  timer = setInterval(step, 60);          // 5 Hz 로그를 약 3배속으로 본다
+  $("play").textContent = "일시정지";
+}
+function stop() {
+  if (timer) { clearInterval(timer); timer = null; }
+  $("play").textContent = "재생";
+}
+$("play").onclick = play;
+$("scrub").oninput = (e) => { stop(); frame = +e.target.value; paint(); };
+
+/* ── 부팅 ─────────────────────────────────────────── */
+function bootFailed(why, hint) {
+  const b = $("boot");
+  b.hidden = false;
+  b.innerHTML = `<h2>${esc(why)}</h2><p>${hint}</p>`;
+}
+
+async function boot() {
+  let res;
+  try {
+    res = await fetch("flight_data.json", { cache: "no-cache" });
+  } catch (e) {
+    // file:// 로 열면 여기로 온다. 브라우저가 로컬 파일 fetch 를 막는다.
+    return bootFailed("비행 데이터를 불러오지 못했습니다", `
+      이 페이지는 <code>flight_data.json</code> 을 같은 폴더에서 읽습니다.
+      파일을 두 번 눌러 여는 방식(<code>file://</code>)으로는 브라우저가 그 요청을 막습니다.
+      저장소 최상위에서 아래를 실행하고 <code>http://localhost:8000</code> 을 여세요.
+      <pre>python3 site/build.py
+python3 -m http.server -d site 8000</pre>`);
+  }
+  if (!res.ok) {
+    return bootFailed(`비행 데이터 응답 ${res.status}`,
+      "<code>site/flight_data.json</code> 이 배포에 포함되지 않았습니다. " +
+      "<code>python3 site/build.py</code> 로 만들고 커밋하세요.");
+  }
+
+  DATA = await res.json();
+  LIM = DATA.limits;
+  span = (LIM.max_radius_m + 1.2) * 2;
+  SCALE = Math.min((W - PAD * 2) / span, (H - PAD * 2) / span);
+
+  $("main").hidden = false;
+  buildMissions();
+  select(0);
+}
+
+boot();
+</script>
+
+
+</body>
+</html>

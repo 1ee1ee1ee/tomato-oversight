@@ -8,6 +8,8 @@ python3 -m drone.main --fast      # 하드웨어 없이 즉시 완주 (설치할
 python3 -m drone.main --order "의자 몇 개 있는지 세줘" --fast
 python3 -m drone.main --dashboard # 관제 대시보드 → http://localhost:8080
 python3 -m unittest discover -s drone/tests -t .
+
+python3 site/build.py && python3 -m http.server -d site 8000   # 공개 재생 페이지
 ```
 
 실행하면 이륙 → 탐색 회전 → 대상 접근 → 정지 관찰 → 복귀 → 착륙까지
@@ -465,4 +467,27 @@ drone/
   rangefinders.py VL53L1X ToF 배열 (좌·우·후방).
   dashboard/      관제 대시보드 (http.server + SSE + MJPEG).
   tests/          131개.
+
+site/             공개 재생 페이지. GitHub Pages 로 자동 배포된다.
+  orders.txt      페이지에 실릴 자연어 명령 목록. ← 공동 편집 지점
+  index.html      페이지 한 장. 외부 스크립트 없음.
+  flight_data.json  생성물. 손으로 고치지 않는다.
+  build.py        시뮬레이터를 돌려 위 JSON 을 만든다 (--check 로 최신 확인).
 ```
+
+## 공개 재생 페이지
+
+`site/` 는 완성된 비행 로그를 브라우저에서 재생하는 정적 페이지다.
+관제 대시보드와 다르다 — **명령을 받지 않고, 기체를 움직이지 않는다.**
+그래서 공개해도 된다.
+
+`.github/workflows/pages.yml` 이 `main` 푸시마다 테스트 131개를 돌리고,
+`site/build.py --check` 로 페이지에 실린 데이터가 지금 코드가 만들어내는 것과
+같은지 확인한 뒤 GitHub Pages 에 올린다. 손으로 배포하는 단계가 없다.
+
+명령을 하나 추가하려면 `site/orders.txt` 에 한국어를 한 줄 쓰고
+`python3 site/build.py` 를 돌려 결과를 같이 커밋하면 된다. 통과·거부 판정은
+`mission_spec.validate()` 가 내린 것을 그대로 싣는다 — 페이지가 대신
+좋게 포장해주지 않는다. 자세한 절차는 [`site/README.md`](../site/README.md).
+
+> 최초 1회 저장소 설정 필요: **Settings → Pages → Source** 를 **GitHub Actions** 로.
