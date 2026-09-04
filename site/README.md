@@ -68,9 +68,12 @@ python3 site/build.py --single 리플레이.html --bare   # 문서 껍데기 없
 `.github/workflows/pages.yml` 이 `main` 푸시마다 단위 테스트 → 데이터 최신 확인
 → GitHub Pages 배포까지 합니다. 손으로 올리는 단계는 없습니다.
 
-> 최초 1회만 저장소 설정이 필요합니다:
-> **Settings → Pages → Build and deployment → Source** 를 **GitHub Actions** 로.
-> 그 전까지 배포 잡은 실패합니다 (검증 잡은 정상 동작).
+저장소 설정에서 Pages 를 켜는 단계도 없습니다. 배포 잡의
+`actions/configure-pages` 가 사이트가 없으면 만들고, 이미 있으면
+아무것도 하지 않습니다.
+
+> 조직 정책 등으로 자동 생성이 막히면 배포 잡이 여기서 실패합니다.
+> 그때만 **Settings → Pages → Source** 를 **GitHub Actions** 로 직접 바꿔주세요.
 
 ## 이 페이지와 관제 대시보드의 차이
 

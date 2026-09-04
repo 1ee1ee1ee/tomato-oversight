@@ -490,4 +490,6 @@ site/             공개 재생 페이지. GitHub Pages 로 자동 배포된다.
 `mission_spec.validate()` 가 내린 것을 그대로 싣는다 — 페이지가 대신
 좋게 포장해주지 않는다. 자세한 절차는 [`site/README.md`](../site/README.md).
 
-> 최초 1회 저장소 설정 필요: **Settings → Pages → Source** 를 **GitHub Actions** 로.
+저장소 설정을 손으로 켤 필요는 없다 — 배포 잡의 `actions/configure-pages` 가
+Pages 사이트가 없으면 만든다. 그게 막히는 환경에서만
+**Settings → Pages → Source** 를 **GitHub Actions** 로 바꾸면 된다.
