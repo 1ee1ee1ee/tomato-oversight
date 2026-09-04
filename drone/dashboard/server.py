@@ -12,6 +12,7 @@ Events)로 한다 — 그냥 HTTP 스트림이라 ``http.server`` 로 충분하�
 from __future__ import annotations
 
 import dataclasses
+import hmac
 import json
 import queue
 import threading
@@ -78,8 +79,20 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._json({"error": "not found"}, 404)
 
+    def _authorised(self) -> bool:
+        """쓰기 요청만 검사한다. 읽기는 열어둬야 화면이 그냥 뜬다."""
+        token = self.server.token
+        if not token:
+            return True
+        sent = self.headers.get("X-Console-Token") or ""
+        # 길이가 달라도 상수 시간으로 비교한다.
+        return hmac.compare_digest(sent, token)
+
     def do_POST(self):
         route = self.path.split("?", 1)[0]
+        if not self._authorised():
+            self._json({"error": "토큰이 필요합니다"}, 401)
+            return
         if route == "/api/order":
             self._order()
         elif route == "/api/stop":
@@ -197,11 +210,14 @@ class Console(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address, cfg, hub: Hub, fast: bool = False) -> None:
+    def __init__(self, address, cfg, hub: Hub, fast: bool = False,
+                 token: str = "") -> None:
         super().__init__(address, _Handler)
         self.cfg = cfg
         self.hub = hub
         self.fast = fast
+        #: 비어 있으면 인증 없음. 루프백 밖으로 열 때는 반드시 설정한다.
+        self.token = token
         self._flight: threading.Thread | None = None
 
     def start_flight(self, spec) -> None:
@@ -228,11 +244,42 @@ class Console(ThreadingHTTPServer):
             self.hub.set_flying(False)
 
 
-def serve(cfg, host: str = "0.0.0.0", port: int = 8080, fast: bool = False) -> None:
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def serve(
+    cfg,
+    host: str = "127.0.0.1",
+    port: int = 8080,
+    fast: bool = False,
+    token: str = "",
+) -> None:
+    """대시보드를 띄운다.
+
+    기본값은 **루프백 전용**이다. 이 서버의 ``POST /api/order`` 는 드론을
+    이륙시킨다 — 네트워크에 열어두면 같은 망에 있는 누구나 기체를 띄울 수
+    있다. 시연장 공용 WiFi 에서는 실제 위험이다.
+
+    다른 기기(노트북 등)에서 봐야 하면 ``--host 0.0.0.0 --token <임의문자열>``
+    로 명시적으로 열고, 토큰을 아는 사람만 명령을 보낼 수 있게 한다.
+    인터넷에 직접 노출해서는 안 된다.
+    """
     hub = Hub()
-    console = Console((host, port), cfg, hub, fast=fast)
+
+    if host not in LOOPBACK and not token:
+        raise SystemExit(
+            f"거부: {host} 로 열면서 토큰이 없습니다.\n"
+            "  이 서버의 POST /api/order 는 드론을 이륙시킵니다. 같은 망에 있는\n"
+            "  누구나 기체를 띄울 수 있게 됩니다.\n"
+            "  --token <임의문자열> 을 붙이거나, --host 127.0.0.1 로 두세요."
+        )
+
+    console = Console((host, port), cfg, hub, fast=fast, token=token)
     shown = "localhost" if host in ("0.0.0.0", "") else host
     print(f"관제 대시보드: http://{shown}:{port}")
+    if host not in LOOPBACK:
+        print(f"⚠ {host} 로 열려 있습니다 — 같은 망의 다른 기기에서 접근됩니다.")
+        print("  토큰이 설정돼 있으므로 명령 전송에는 토큰이 필요합니다.")
     print("브라우저에서 열고 한국어로 명령을 입력하세요. Ctrl+C 로 종료합니다.")
     try:
         console.serve_forever()

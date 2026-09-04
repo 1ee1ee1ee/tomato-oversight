@@ -178,8 +178,15 @@ def main() -> None:
         "--dashboard", action="store_true",
         help="관제 대시보드를 띄운다. 명령 입력·상태·판단 근거를 한 화면에서 본다",
     )
-    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument(
+        "--host", default="127.0.0.1",
+        help="기본은 루프백 전용. 다른 기기에서 보려면 0.0.0.0 + --token",
+    )
     p.add_argument("--port", type=int, default=8080)
+    p.add_argument(
+        "--token", default="",
+        help="명령 전송(POST)에 요구할 토큰. 루프백 밖으로 열 때 필수",
+    )
     args = p.parse_args()
 
     cfg = build_config(args)
@@ -187,7 +194,7 @@ def main() -> None:
     if args.dashboard:
         from .dashboard import serve
 
-        serve(cfg, host=args.host, port=args.port, fast=args.fast)
+        serve(cfg, host=args.host, port=args.port, fast=args.fast, token=args.token)
         return
 
     spec = None

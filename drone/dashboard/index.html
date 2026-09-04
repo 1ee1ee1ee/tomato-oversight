@@ -143,6 +143,11 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+// 루프백 밖으로 열었을 때만 필요하다. ?token=... 으로 넘긴다.
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+const authHeaders = () => TOKEN
+  ? { "Content-Type": "application/json", "X-Console-Token": TOKEN }
+  : { "Content-Type": "application/json" };
 const SAMPLES = ["사람 찾아서 앞에 서줘", "페트병 2개 세줘", "나 따라다녀",
                  "한 바퀴 돌면서 살펴봐", "사람 앞 30cm 까지 가"];
 let limits = { max_radius_m: 4, min_alt_m: 0.8, max_alt_m: 2 };
@@ -163,10 +168,11 @@ async function send() {
   try {
     const res = await fetch("/api/order", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify({ order }),
     });
     const data = await res.json();
+    if (res.status === 401) { showError("토큰이 필요합니다. 주소 끝에 ?token=... 을 붙이세요"); return; }
     if (data.error) { showError(data.error); return; }
     showVerdict(data.mission);
     if (data.accepted) { track = []; $("log").innerHTML = ""; }
@@ -178,7 +184,7 @@ async function send() {
 }
 $("send").onclick = send;
 $("order").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
-$("stop").onclick = () => fetch("/api/stop", { method: "POST" });
+$("stop").onclick = () => fetch("/api/stop", { method: "POST", headers: authHeaders() });
 
 function showError(msg) {
   const v = $("verdict");

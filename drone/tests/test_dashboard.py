@@ -16,7 +16,7 @@ from pathlib import Path
 
 from drone.config import DEFAULT
 from drone.dashboard.hub import SUBSCRIBER_BACKLOG, Hub, MissionRecord
-from drone.dashboard.server import Console
+from drone.dashboard.server import Console, serve
 
 
 def tick(t=0.0, phase="search", n=0.0, e=0.0, vetoes=()) -> dict:
@@ -207,3 +207,79 @@ class ServerRoutes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Exposure(unittest.TestCase):
+    """이 서버의 POST /api/order 는 드론을 이륙시킨다.
+
+    루프백 밖으로 열면서 인증이 없으면 같은 망의 누구나 기체를 띄울 수 있다.
+    시연장 공용 WiFi 에서는 실제 위험이므로 코드가 거부해야 한다.
+    """
+
+    def test_refuses_to_bind_outside_loopback_without_token(self):
+        with self.assertRaises(SystemExit) as ctx:
+            serve(DEFAULT, host="0.0.0.0", port=0)
+        self.assertIn("토큰", str(ctx.exception))
+
+    def test_loopback_needs_no_token(self):
+        """기본 사용(같은 기기)에서 토큰을 강요하면 아무도 안 쓴다."""
+        hub = Hub()
+        server = Console(("127.0.0.1", 0), DEFAULT, hub)
+        try:
+            self.assertEqual(server.token, "")
+        finally:
+            server.server_close()
+
+
+class TokenGate(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cfg = dataclasses.replace(
+            DEFAULT,
+            runtime=dataclasses.replace(
+                DEFAULT.runtime, log_path=str(Path(cls.tmp.name) / "log.jsonl")
+            ),
+        )
+        cls.server = Console(("127.0.0.1", 0), cfg, Hub(), fast=True, token="s3cret")
+        cls.port = cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.tmp.cleanup()
+
+    def _post(self, token=None):
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["X-Console-Token"] = token
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/order",
+            data=json.dumps({"order": "사람 찾아서 앞에 서줘"}).encode(),
+            headers=headers, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_missing_token_is_rejected(self):
+        self.assertEqual(self._post(None), 401)
+
+    def test_wrong_token_is_rejected(self):
+        self.assertEqual(self._post("nope"), 401)
+
+    def test_reads_stay_open(self):
+        """화면이 그냥 떠야 한다. 토큰은 쓰기만 막는다."""
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{self.port}/api/limits", timeout=5
+        ) as r:
+            self.assertEqual(r.status, 200)
+
+    def test_correct_token_is_accepted(self):
+        self.assertEqual(self._post("s3cret"), 200)
+        if self.server._flight is not None:
+            self.server._flight.join(timeout=30)

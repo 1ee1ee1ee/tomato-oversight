@@ -17,7 +17,7 @@ python3 -m unittest discover -s drone/tests -t .
 
 | 계층 | 상태 |
 |---|---|
-| 판단(policy) · 안전(guard) · 명령 컴파일러 · 시뮬레이션 | **동작 확인. 테스트 125개** |
+| 판단(policy) · 안전(guard) · 명령 컴파일러 · 시뮬레이션 | **동작 확인. 테스트 131개** |
 | MAVLink 연동 (`link.py`) | 작성 완료, **실기체 미검증** |
 | OAK-D / ONNX 인식 백엔드 | 작성 완료, **실기체 미검증** |
 
@@ -47,9 +47,21 @@ Guard는 그대로 두면 된다 — 그게 Guard의 존재 이유다.
 ### 관제 대시보드
 
 ```bash
-python3 -m drone.main --dashboard          # http://localhost:8080
+python3 -m drone.main --dashboard          # http://localhost:8080 (루프백 전용)
 python3 -m drone.main --dashboard --perception oakd --rangefinders vl53l1x --link mavlink
 ```
+
+> ⚠️ **인터넷에 노출하지 말 것.** 이 서버의 `POST /api/order` 는 드론을
+> 이륙시킨다. 기본값은 루프백 전용이고, 다른 기기에서 보려면 토큰이 필요하다:
+>
+> ```bash
+> python3 -m drone.main --dashboard --host 0.0.0.0 --token <임의문자열>
+> # 브라우저: http://<기체IP>:8080/?token=<임의문자열>
+> ```
+>
+> 토큰 없이 `--host 0.0.0.0` 을 주면 코드가 거부한다. 시연장 공용 WiFi 에서
+> 같은 망의 누구나 기체를 띄울 수 있게 되기 때문이다. 읽기(상태·맵·카메라)는
+> 토큰 없이 열려 있다 — 화면은 그냥 떠야 한다.
 
 브라우저에서 한국어로 입력하거나 마이크 버튼으로 말하면, 컴파일 결과와
 검증 통과 여부가 그대로 화면에 뜬다. 통과하지 못한 명령은 비행이 시작되지
@@ -452,5 +464,5 @@ drone/
   sim/            SITL 파라미터.
   rangefinders.py VL53L1X ToF 배열 (좌·우·후방).
   dashboard/      관제 대시보드 (http.server + SSE + MJPEG).
-  tests/          125개.
+  tests/          131개.
 ```
