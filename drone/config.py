@@ -62,8 +62,11 @@ class Runtime:
 
     loop_hz: float = 10.0
     perception_backend: str = "mock"        # mock | oakd | onnx
+    rangefinder_backend: str = "none"       # none | vl53l1x  (좌·우·후방)
     link_backend: str = "mock"              # mock | mavlink
-    mavlink_url: str = "udp:127.0.0.1:14550"
+    # 실기체는 FC 를 Pi 의 USB 에 꽂는 것이 가장 안전하다 — 배선 실수 여지가
+    # 없고 레벨 문제도 없다. SITL 은 "udp:127.0.0.1:14550" 으로 바꿔 쓴다.
+    mavlink_url: str = "/dev/ttyACM0:921600"
     onnx_model_path: str = "models/yolo.onnx"
     log_path: str = "flight_log.jsonl"
 

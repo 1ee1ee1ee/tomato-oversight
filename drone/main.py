@@ -26,6 +26,7 @@ def build_config(args) -> Config:
     runtime = dataclasses.replace(
         DEFAULT.runtime,
         perception_backend=args.perception,
+        rangefinder_backend=args.rangefinders,
         link_backend=args.link,
         mavlink_url=args.mavlink_url,
         log_path=args.log,
@@ -141,6 +142,10 @@ def run(
 def main() -> None:
     p = argparse.ArgumentParser(description="실내 온보드 자율 드론")
     p.add_argument("--perception", default="mock", choices=["mock", "oakd", "onnx"])
+    p.add_argument(
+        "--rangefinders", default="none", choices=["none", "vl53l1x"],
+        help="좌·우·후방 ToF 배열. 전방은 OAK-D 뎁스가 담당한다",
+    )
     p.add_argument("--link", default="mock", choices=["mock", "mavlink"])
     p.add_argument("--mavlink-url", default=Runtime().mavlink_url)
     p.add_argument("--log", default=Runtime().log_path)

@@ -159,6 +159,12 @@ class Guard:
             vetoes.append("obstacle_left")
             cmd = cmd.replace(vy=0.0)
 
+        # 후진도 막는다. Policy 는 대상에 너무 가까우면 물러서고, 전방을 못 볼 때도
+        # 후진으로 빠져나온다 — 뒤에 눈이 없으면 그 탈출로가 곧 충돌이 된다.
+        if percep.back_m is not None and percep.back_m < lim.min_side_m and cmd.vx < 0:
+            vetoes.append("obstacle_back")
+            cmd = cmd.replace(vx=0.0, reason=f"후방 {percep.back_m:.2f}m — 후진 차단")
+
         return cmd
 
     def _apply_geofence(

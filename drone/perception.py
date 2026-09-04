@@ -12,9 +12,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from typing import Protocol
 
+from . import rangefinders
 from .state import Detection, Perception, Telemetry
 
 
@@ -324,13 +326,52 @@ class OnnxSource:
             self._camera.stop()
 
 
+class WithRangefinders:
+    """인식 백엔드에 좌·우·후방 ToF 값을 덧붙인다.
+
+    카메라와 거리계는 서로 다른 하드웨어이고 고장도 따로 난다. 한쪽을
+    다른 쪽 클래스 안에 넣는 대신 합성해서, 어느 쪽을 갈아끼워도 나머지가
+    그대로 남게 한다. 전방(``front_m``)은 건드리지 않는다 — 그건 OAK-D
+    스테레오 뎁스의 몫이다.
+    """
+
+    def __init__(self, inner: PerceptionSource, array: rangefinders.RangefinderArray) -> None:
+        self.inner = inner
+        self.array = array
+
+    def read(self, telem: Telemetry | None) -> Perception | None:
+        percep = self.inner.read(telem)
+        if percep is None:
+            return None
+        clear = self.array.read()
+        return dataclasses.replace(
+            percep,
+            left_m=clear.left_m,
+            right_m=clear.right_m,
+            back_m=clear.back_m,
+        )
+
+    def close(self) -> None:
+        self.array.close()
+        self.inner.close()
+
+
 def build(cfg) -> PerceptionSource:
     """설정에 따라 백엔드를 고른다."""
     backend = cfg.runtime.perception_backend
     if backend == "mock":
+        # 모의 방 시뮬레이션이 이미 좌·우 벽 거리를 계산하므로 덧씌우지 않는다.
         return MockSource(label=cfg.mission.target_label)
     if backend == "oakd":
-        return OakDSource(blob_path=cfg.runtime.onnx_model_path, labels=[cfg.mission.target_label])
-    if backend == "onnx":
-        return OnnxSource(model_path=cfg.runtime.onnx_model_path, labels=[cfg.mission.target_label])
-    raise ValueError(f"알 수 없는 perception 백엔드: {backend}")
+        source = OakDSource(
+            blob_path=cfg.runtime.onnx_model_path, labels=[cfg.mission.target_label]
+        )
+    elif backend == "onnx":
+        source = OnnxSource(
+            model_path=cfg.runtime.onnx_model_path, labels=[cfg.mission.target_label]
+        )
+    else:
+        raise ValueError(f"알 수 없는 perception 백엔드: {backend}")
+
+    array = rangefinders.build(cfg.runtime.rangefinder_backend)
+    return WithRangefinders(source, array)

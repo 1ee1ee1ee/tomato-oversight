@@ -6,3 +6,5 @@ pymavlink>=2.4.42     # link=mavlink (SITL 및 실기체)
 # onnxruntime>=1.18   # perception=onnx
 # numpy>=1.26         # perception=oakd / onnx (뎁스맵 처리)
 # picamera2           # perception=onnx (Raspberry Pi OS 에 기본 포함)
+# adafruit-circuitpython-vl53l1x  # rangefinders=vl53l1x
+# gpiozero            # rangefinders=vl53l1x (XSHUT 제어). Pi 5 는 RPi.GPIO 불가
