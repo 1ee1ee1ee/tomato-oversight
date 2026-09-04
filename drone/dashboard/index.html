@@ -1,0 +1,332 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>드론 관제</title>
+<style>
+  :root {
+    --bg:#0e1116; --panel:#161b22; --line:#262d38; --ink:#e6edf3; --dim:#8b949e;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.55 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  header { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+           padding:14px 20px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:16px; letter-spacing:-.2px; }
+  .pill { font:11px var(--mono); padding:2px 9px; border-radius:999px;
+          border:1px solid var(--line); color:var(--dim); }
+  .pill.live { color:var(--ok); border-color:#1c5c2c; }
+  .pill.idle { color:var(--dim); }
+
+  main { display:grid; gap:14px; padding:14px 20px 40px;
+         grid-template-columns: minmax(320px, 1fr) minmax(340px, 1.1fr); }
+  @media (max-width:900px) { main { grid-template-columns:1fr; } }
+
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+  section > h2 { margin:0; padding:11px 14px; font-size:12px; font-weight:600;
+                 letter-spacing:.4px; color:var(--dim); border-bottom:1px solid var(--line); }
+  .body { padding:14px; }
+
+  /* 명령 입력 — 화면에서 가장 눈에 띄어야 한다 */
+  #order { width:100%; padding:13px 14px; font-size:16px; color:var(--ink);
+           background:#0b0e13; border:1px solid var(--line); border-radius:8px; }
+  #order:focus { outline:none; border-color:var(--accent); }
+  .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  button { padding:9px 15px; font-size:14px; border-radius:8px; cursor:pointer;
+           background:#21262d; color:var(--ink); border:1px solid var(--line); }
+  button:hover:not(:disabled) { border-color:var(--accent); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#07111f; font-weight:600; }
+  button.danger { color:var(--bad); }
+  button.rec { color:var(--bad); border-color:var(--bad); }
+  .hint { margin-top:9px; color:var(--dim); font-size:12px; }
+  .hint b { color:var(--ink); font-weight:500; }
+  .samples { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .samples span { font-size:12px; padding:4px 10px; border-radius:999px; cursor:pointer;
+                  border:1px solid var(--line); color:var(--dim); }
+  .samples span:hover { color:var(--ink); border-color:var(--accent); }
+
+  /* 컴파일 결과 */
+  #verdict { margin-top:14px; border-radius:8px; padding:12px 14px; display:none;
+             border:1px solid var(--line); background:#0b0e13; }
+  #verdict.ok { border-color:#1c5c2c; }
+  #verdict.no { border-color:#6b2226; }
+  #verdict h3 { margin:0 0 8px; font-size:13px; }
+  #verdict.ok h3 { color:var(--ok); }
+  #verdict.no h3 { color:var(--bad); }
+  #verdict dl { display:grid; grid-template-columns:auto 1fr; gap:3px 12px;
+                margin:0; font:12px var(--mono); }
+  #verdict dt { color:var(--dim); }
+  #verdict ul { margin:9px 0 0; padding-left:18px; font-size:12.5px; }
+  #verdict .problem { color:var(--bad); }
+  #verdict .note { color:var(--dim); }
+
+  /* 상태 타일 */
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(88px,1fr)); gap:1px;
+           background:var(--line); border-top:1px solid var(--line); }
+  .tile { background:var(--panel); padding:11px 12px; }
+  .tile .k { font-size:10.5px; color:var(--dim); letter-spacing:.3px; }
+  .tile .v { font:16px/1.3 var(--mono); margin-top:3px; }
+  .tile .v.small { font-size:13px; }
+
+  /* Guard */
+  #guard { padding:12px 14px; border-top:1px solid var(--line); min-height:44px; }
+  #guard .quiet { color:var(--ok); font-size:12.5px; }
+  .veto { display:inline-block; font:11px var(--mono); padding:3px 9px; border-radius:6px;
+          margin:2px 5px 2px 0; background:#3a1d1f; color:#ff9d96; border:1px solid #6b2226; }
+  #reason { margin-top:7px; font:12px var(--mono); color:var(--dim); }
+
+  /* 맵 */
+  #map { display:block; width:100%; max-height:min(46vh, 420px); background:#0b0e13; }
+  /* 카메라 */
+  #cam { display:block; width:100%; background:#0b0e13; }
+  #camoff { padding:26px 14px; text-align:center; color:var(--dim); font-size:12.5px; }
+
+  /* 로그 */
+  #log { max-height:210px; overflow:auto; font:11.5px/1.7 var(--mono); padding:10px 14px; }
+  #log div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--dim); }
+  #log div.v { color:#ff9d96; }
+  #log b { color:var(--ink); font-weight:500; }
+</style>
+
+<header>
+  <h1>실내 자율 드론 관제</h1>
+  <span class="pill" id="conn">연결 중…</span>
+  <span class="pill idle" id="flying">대기</span>
+</header>
+
+<main>
+  <div style="display:grid; gap:14px; align-content:start">
+    <section>
+      <h2>임무 명령 — 사람 언어로 입력합니다</h2>
+      <div class="body">
+        <input id="order" placeholder="예: 페트병 2개 세줘" autocomplete="off">
+        <div class="row">
+          <button class="primary" id="send">명령 전송</button>
+          <button id="mic">🎤 음성</button>
+          <button class="danger" id="stop" disabled>비행 중단</button>
+        </div>
+        <div class="samples" id="samples"></div>
+        <div class="hint">
+          명령은 <b>이륙 전에 딱 한 번</b> 해석됩니다. 검증을 통과하지 못하면
+          프로펠러가 돌지 않습니다.
+        </div>
+        <div id="verdict"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>기체 상태</h2>
+      <div class="tiles" id="tiles"></div>
+      <div id="guard"><span class="quiet">Guard 개입 없음</span></div>
+    </section>
+
+    <section>
+      <h2>비행 로그</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+
+  <div style="display:grid; gap:14px; align-content:start">
+    <section>
+      <h2>탑다운 맵</h2>
+      <svg id="map" viewBox="-6 -6 12 12" preserveAspectRatio="xMidYMid meet"></svg>
+    </section>
+    <section>
+      <h2>카메라</h2>
+      <img id="cam" alt="" hidden>
+      <div id="camoff">카메라 프레임 없음 — 시뮬레이션 모드이거나 기체가 연결되지 않았습니다</div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// 루프백 밖으로 열었을 때만 필요하다. ?token=... 으로 넘긴다.
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+const authHeaders = () => TOKEN
+  ? { "Content-Type": "application/json", "X-Console-Token": TOKEN }
+  : { "Content-Type": "application/json" };
+const SAMPLES = ["사람 찾아서 앞에 서줘", "페트병 2개 세줘", "나 따라다녀",
+                 "한 바퀴 돌면서 살펴봐", "사람 앞 30cm 까지 가"];
+let limits = { max_radius_m: 4, min_alt_m: 0.8, max_alt_m: 2 };
+let track = [];
+
+SAMPLES.forEach((s) => {
+  const el = document.createElement("span");
+  el.textContent = s;
+  el.onclick = () => { $("order").value = s; $("order").focus(); };
+  $("samples").appendChild(el);
+});
+
+// --- 명령 전송 -------------------------------------------------------
+async function send() {
+  const order = $("order").value.trim();
+  if (!order) return;
+  $("send").disabled = true;
+  try {
+    const res = await fetch("/api/order", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ order }),
+    });
+    const data = await res.json();
+    if (res.status === 401) { showError("토큰이 필요합니다. 주소 끝에 ?token=... 을 붙이세요"); return; }
+    if (data.error) { showError(data.error); return; }
+    showVerdict(data.mission);
+    if (data.accepted) { track = []; $("log").innerHTML = ""; }
+  } catch (e) {
+    showError(String(e));
+  } finally {
+    $("send").disabled = false;
+  }
+}
+$("send").onclick = send;
+$("order").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+$("stop").onclick = () => fetch("/api/stop", { method: "POST", headers: authHeaders() });
+
+function showError(msg) {
+  const v = $("verdict");
+  v.className = "no"; v.style.display = "block";
+  v.innerHTML = `<h3>전송 실패</h3><ul><li class="problem">${esc(msg)}</li></ul>`;
+}
+
+function showVerdict(m) {
+  if (!m) return;
+  const v = $("verdict");
+  v.className = m.accepted ? "ok" : "no";
+  v.style.display = "block";
+  const rows = [["명령", m.order], ["임무", m.behavior],
+                ["대상", m.target], ["해석", m.backend]];
+  let html = `<h3>${m.accepted ? "✅ 검증 통과 — 비행 시작" : "❌ 거부 — 프로펠러가 돌지 않습니다"}</h3><dl>`;
+  rows.forEach(([k, val]) => { html += `<dt>${k}</dt><dd>${esc(val ?? "")}</dd>`; });
+  html += "</dl>";
+  if (m.problems?.length || m.notes?.length) {
+    html += "<ul>";
+    (m.problems || []).forEach((p) => html += `<li class="problem">${esc(p)}</li>`);
+    (m.notes || []).forEach((n) => html += `<li class="note">${esc(n)}</li>`);
+    html += "</ul>";
+  }
+  v.innerHTML = html;
+}
+
+// --- 음성 입력 (브라우저 내장, 서버 코드 불필요) -----------------------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) {
+  $("mic").disabled = true;
+  $("mic").title = "이 브라우저는 음성 인식을 지원하지 않습니다 (크롬 권장)";
+} else {
+  const rec = new SR();
+  rec.lang = "ko-KR"; rec.interimResults = false; rec.maxAlternatives = 1;
+  let on = false;
+  $("mic").onclick = () => { on ? rec.stop() : rec.start(); };
+  rec.onstart = () => { on = true; $("mic").classList.add("rec"); $("mic").textContent = "🎤 듣는 중…"; };
+  rec.onend = () => { on = false; $("mic").classList.remove("rec"); $("mic").textContent = "🎤 음성"; };
+  rec.onerror = () => { on = false; $("mic").classList.remove("rec"); $("mic").textContent = "🎤 음성"; };
+  rec.onresult = (e) => { $("order").value = e.results[0][0].transcript; send(); };
+}
+
+// --- 상태 스트림 -----------------------------------------------------
+const es = new EventSource("/api/stream");
+es.onopen = () => { $("conn").textContent = "연결됨"; $("conn").className = "pill live"; };
+es.onerror = () => { $("conn").textContent = "연결 끊김"; $("conn").className = "pill"; };
+es.onmessage = (e) => {
+  const r = JSON.parse(e.data);
+  if (!r || !r.phase) return;
+  render(r);
+};
+
+function render(r) {
+  const flying = r.phase && !["done", "idle", "error"].includes(r.phase);
+  $("flying").textContent = flying ? "비행 중" : (r.phase === "done" ? "임무 완료" : "대기");
+  $("flying").className = "pill " + (flying ? "live" : "idle");
+  $("stop").disabled = !flying;
+
+  const batt = r.batt ?? 0;
+  const battColor = batt <= 20 ? "var(--bad)" : batt <= 35 ? "var(--warn)" : "var(--ink)";
+  tiles([
+    ["단계", r.phase, ""],
+    ["명령", r.action, ""],
+    ["경과", (r.t ?? 0).toFixed(1) + "s", ""],
+    ["고도", (r.alt ?? 0).toFixed(2) + " m", ""],
+    ["위치 N/E", `${(r.n ?? 0).toFixed(2)} / ${(r.e ?? 0).toFixed(2)}`, "small"],
+    ["배터리", batt.toFixed(0) + "%", "", battColor],
+  ]);
+
+  const g = $("guard");
+  if (r.vetoes?.length) {
+    g.innerHTML = r.vetoes.map((v) => `<span class="veto">${esc(v)}</span>`).join("")
+                + `<div id="reason">${esc(r.reason || "")}</div>`;
+  } else {
+    g.innerHTML = `<span class="quiet">Guard 개입 없음</span>`
+                + `<div id="reason">${esc(r.reason || "")}</div>`;
+  }
+
+  const line = document.createElement("div");
+  if (r.vetoes?.length) line.className = "v";
+  line.innerHTML = `<b>${(r.t ?? 0).toFixed(1)}s</b> ${esc(r.phase)} · ${esc(r.action)} · `
+                 + `${esc(r.reason || "")}${r.vetoes?.length ? "  ⚠ " + r.vetoes.join(",") : ""}`;
+  $("log").prepend(line);
+  while ($("log").childElementCount > 250) $("log").lastElementChild.remove();
+
+  track.push([r.n ?? 0, r.e ?? 0]);
+  if (track.length > 600) track.shift();
+  drawMap(r);
+}
+
+function tiles(rows) {
+  $("tiles").innerHTML = rows.map(([k, v, cls, color]) =>
+    `<div class="tile"><div class="k">${k}</div>`
+    + `<div class="v ${cls || ""}"${color ? ` style="color:${color}"` : ""}>${esc(String(v ?? "—"))}</div></div>`
+  ).join("");
+}
+
+// --- 탑다운 맵 (SVG. 축은 북(위)/동(오른쪽)) ---------------------------
+function drawMap(r) {
+  const R = limits.max_radius_m || 4;
+  const view = R + 1.5;
+  const map = $("map");
+  map.setAttribute("viewBox", `${-view} ${-view} ${view * 2} ${view * 2}`);
+
+  // SVG 는 y 가 아래로 증가한다. 북쪽을 위로 보이게 하려고 y = -north 로 그린다.
+  const pts = track.map(([n, e]) => `${e.toFixed(3)},${(-n).toFixed(3)}`).join(" ");
+  const n = r.n ?? 0, e = r.e ?? 0;
+  const grid = [];
+  for (let i = -Math.floor(view); i <= view; i++) {
+    grid.push(`<line x1="${i}" y1="${-view}" x2="${i}" y2="${view}"/>`);
+    grid.push(`<line x1="${-view}" y1="${i}" x2="${view}" y2="${i}"/>`);
+  }
+
+  map.innerHTML = `
+    <g stroke="#1b2028" stroke-width="0.02">${grid.join("")}</g>
+    <circle cx="0" cy="0" r="${R}" fill="none" stroke="#d29922" stroke-width="0.06"
+            stroke-dasharray="0.3 0.2" opacity="0.75"/>
+    <circle cx="0" cy="0" r="0.13" fill="#8b949e"/>
+    <text x="0.22" y="0.09" font-size="0.26" fill="#8b949e">시작</text>
+    <polyline points="${pts}" fill="none" stroke="#58a6ff" stroke-width="0.09"
+              stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="${e}" cy="${-n}" r="0.22" fill="#3fb950"/>
+    <text x="${-view + 0.25}" y="${-view + 0.55}" font-size="0.26" fill="#8b949e">
+      지오펜스 ${R}m · 북↑</text>`;
+}
+
+// --- 초기화 ----------------------------------------------------------
+fetch("/api/limits").then((r) => r.json()).then((l) => { limits = l; drawMap({}); });
+fetch("/api/state").then((r) => r.json()).then((s) => {
+  if (s.mission) showVerdict(s.mission);
+  if (s.latest?.phase) render(s.latest);
+});
+// 카메라는 프레임이 있을 때만 붙인다. 없으면 안내 문구를 남긴다.
+fetch("/api/camera", { method: "HEAD" }).catch(() => {});
+const probe = new Image();
+probe.onload = () => { $("cam").hidden = false; $("camoff").hidden = true; $("cam").src = "/api/camera"; };
+probe.onerror = () => {};
+probe.src = "/api/camera";
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+drawMap({});
+</script>
