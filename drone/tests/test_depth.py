@@ -6,7 +6,12 @@
 
 import unittest
 
-import numpy as np
+# 뎁스 처리는 numpy 가 있어야 검사할 수 있다. 없는 환경에서 ImportError 로
+# 죽는 대신 이 모듈만 건너뛴다 — CI 는 numpy 를 설치하므로 항상 돈다.
+try:
+    import numpy as np
+except ImportError:                                          # pragma: no cover
+    raise unittest.SkipTest("numpy 없음 — 뎁스 테스트 건너뜀")
 
 from drone.config import Limits
 from drone.guard import Guard
